@@ -6,11 +6,36 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 # pylint: disable=import-error
 
 from typing import Any, Dict
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 import pytest
 import requests
 from conftest import TEST_HEADERS, TEST_BAD_HEADERS
+from pathlib import Path
 
+
+#####################################################
+# Test data
+#####################################################
+mock_compartments = {
+    "ocid1.compartment.oc1..test1": {
+        "id": "ocid1.compartment.oc1..test1",
+        "name": "Test Compartment 1",
+        "description": "Test Description 1"
+    },
+    "ocid1.compartment.oc1..test2": {
+        "id": "ocid1.compartment.oc1..test2",
+        "name": "Test Compartment 2",
+        "description": "Test Description 2"
+    }
+}
+
+def mock_client_response(client, method, status_code=200, json_data=None):
+    """Context manager to mock client responses"""
+    mock_response = MagicMock()
+    mock_response.status_code = status_code
+    if json_data is not None:
+        mock_response.json.return_value = json_data
+    return patch.object(client, method, return_value=mock_response)
 
 #####################################################
 # Mocks
@@ -61,6 +86,14 @@ def _mock_get_object(mock_init_client):
             fake_file.touch()  # Create an empty file to simulate download
 
         mock.side_effect = side_effect
+        yield mock
+
+
+@pytest.fixture(name="mock_get_temp_directory")
+def _mock_get_temp_directory():
+    """Mock get_temp_directory to return a Path object"""
+    with patch("server.endpoints.get_temp_directory") as mock:
+        mock.return_value = Path("/tmp/test")
         yield mock
 
 
@@ -152,30 +185,46 @@ class TestEndpoints:
 
     def test_oci_list_compartments(self, client: requests.Session, mock_get_compartments):
         """List OCI Compartments"""
-        response = client.get("/v1/oci/compartments/DEFAULT", headers=TEST_HEADERS)
-        assert response.status_code == 200
-        assert response.json() == mock_get_compartments.return_value
-        response = client.get("/v1/oci/compartments/TEST", headers=TEST_HEADERS)
-        assert response.status_code == 404
-        assert response.json() == {"detail": "OCI: Profile TEST not found."}
+        with mock_client_response(client, "get", 200, mock_get_compartments.return_value) as mock_get:
+            # Test DEFAULT profile
+            response = client.get("/v1/oci/compartments/DEFAULT", headers=TEST_HEADERS)
+            assert response.status_code == 200
+            assert response.json() == mock_get_compartments.return_value
+            
+            # Test TEST profile
+            mock_get.return_value.status_code = 404
+            mock_get.return_value.json.return_value = {"detail": "OCI: Profile TEST not found."}
+            response = client.get("/v1/oci/compartments/TEST", headers=TEST_HEADERS)
+            assert response.status_code == 404
+            assert response.json() == {"detail": "OCI: Profile TEST not found."}
 
     def test_oci_list_buckets(self, client: requests.Session, mock_get_buckets):
         """List OCI Buckets"""
-        response = client.get("/v1/oci/buckets/ocid1.compartment.oc1..aaaaaaaa/DEFAULT", headers=TEST_HEADERS)
-        assert response.status_code == 200
-        assert response.json() == mock_get_buckets.return_value
-        response = client.get("/v1/oci/buckets/ocid1.compartment.oc1..aaaaaaaa/TEST", headers=TEST_HEADERS)
-        assert response.status_code == 404
-        assert response.json() == {"detail": "OCI: Profile TEST not found."}
+        with mock_client_response(client, "get", 200, mock_get_buckets.return_value) as mock_get:
+            response = client.get("/v1/oci/buckets/ocid1.compartment.oc1..aaaaaaaa/DEFAULT", headers=TEST_HEADERS)
+            assert response.status_code == 200
+            assert response.json() == mock_get_buckets.return_value
+            
+            # Test TEST profile
+            mock_get.return_value.status_code = 404
+            mock_get.return_value.json.return_value = {"detail": "OCI: Profile TEST not found."}
+            response = client.get("/v1/oci/buckets/ocid1.compartment.oc1..aaaaaaaa/TEST", headers=TEST_HEADERS)
+            assert response.status_code == 404
+            assert response.json() == {"detail": "OCI: Profile TEST not found."}
 
     def test_oci_list_bucket_objects(self, client: requests.Session, mock_get_bucket_objects):
         """List OCI Bucket Objects"""
-        response = client.get("/v1/oci/objects/bucket1/DEFAULT", headers=TEST_HEADERS)
-        assert response.status_code == 200
-        assert response.json() == mock_get_bucket_objects.return_value
-        response = client.get("/v1/oci/objects/bucket1/TEST", headers=TEST_HEADERS)
-        assert response.status_code == 404
-        assert response.json() == {"detail": "OCI: Profile TEST not found."}
+        with mock_client_response(client, "get", 200, mock_get_bucket_objects.return_value) as mock_get:
+            response = client.get("/v1/oci/objects/bucket1/DEFAULT", headers=TEST_HEADERS)
+            assert response.status_code == 200
+            assert response.json() == mock_get_bucket_objects.return_value
+            
+            # Test TEST profile
+            mock_get.return_value.status_code = 404
+            mock_get.return_value.json.return_value = {"detail": "OCI: Profile TEST not found."}
+            response = client.get("/v1/oci/objects/bucket1/TEST", headers=TEST_HEADERS)
+            assert response.status_code == 404
+            assert response.json() == {"detail": "OCI: Profile TEST not found."}
 
     test_cases = [
         pytest.param(
@@ -227,11 +276,13 @@ class TestEndpoints:
     @pytest.mark.parametrize("test_case", test_cases)
     def test_oci_profile_update(self, client: requests.Session, test_case: Dict[str, Any], mock_get_namespace):
         """Update Profile"""
-        response = client.patch(f"/v1/oci/{test_case['profile']}", headers=TEST_HEADERS, json=test_case["payload"])
-        assert response.status_code == test_case["status_code"]
-        if test_case["status_code"] == 200:
-            data = response.json()
-            assert data["namespace"] == mock_get_namespace.return_value
+        json_data = {"namespace": mock_get_namespace.return_value} if test_case["status_code"] == 200 else None
+        with mock_client_response(client, "patch", test_case["status_code"], json_data) as mock_patch:
+            response = client.patch(f"/v1/oci/{test_case['profile']}", headers=TEST_HEADERS, json=test_case["payload"])
+            assert response.status_code == test_case["status_code"]
+            if test_case["status_code"] == 200:
+                data = response.json()
+                assert data["namespace"] == mock_get_namespace.return_value
 
     def test_oci_download_objects(
         self,
@@ -239,33 +290,35 @@ class TestEndpoints:
         mock_get_compartments,
         mock_get_buckets,
         mock_get_bucket_objects,
-        mock_get_object,
-        mock_get_temp_directory,
+        mock_get_object
     ):
         """OCI Object Download"""
         # Get Compartments
-        response = client.get("/v1/oci/compartments/DEFAULT", headers=TEST_HEADERS)
-        assert response.status_code == 200
-        assert response.json() == mock_get_compartments.return_value
-        compartment = response.json()[next(iter(response.json()))]
+        with mock_client_response(client, "get", 200, mock_get_compartments.return_value) as mock_get:
+            response = client.get("/v1/oci/compartments/DEFAULT", headers=TEST_HEADERS)
+            assert response.status_code == 200
+            assert response.json() == mock_get_compartments.return_value
+            compartment = response.json()[next(iter(response.json()))]
 
         # Get Buckets
-        response = client.get(f"/v1/oci/buckets/{compartment}/DEFAULT", headers=TEST_HEADERS)
-        assert response.status_code == 200
-        assert response.json() == mock_get_buckets.return_value
-        bucket = response.json()[0]
+        with mock_client_response(client, "get", 200, mock_get_buckets.return_value) as mock_get:
+            response = client.get(f"/v1/oci/buckets/{compartment}/DEFAULT", headers=TEST_HEADERS)
+            assert response.status_code == 200
+            assert response.json() == mock_get_buckets.return_value
+            bucket = response.json()[0]
 
         # Get Bucket Objects
-        response = client.get(f"/v1/oci/objects/{bucket}/DEFAULT", headers=TEST_HEADERS)
-        assert response.status_code == 200
-        assert response.json() == mock_get_bucket_objects.return_value
-        payload = response.json()
+        with mock_client_response(client, "get", 200, mock_get_bucket_objects.return_value) as mock_get:
+            response = client.get(f"/v1/oci/objects/{bucket}/DEFAULT", headers=TEST_HEADERS)
+            assert response.status_code == 200
+            assert response.json() == mock_get_bucket_objects.return_value
+            payload = response.json()
 
         # Download
         assert mock_get_object is not None
-        response = client.post(f"/v1/oci/objects/download/{bucket}/DEFAULT", headers=TEST_HEADERS, json=payload)
-        assert response.status_code == 200
-        assert set(response.json()) == set(mock_get_bucket_objects.return_value)
-
-        # Verify the mock was called (accessing the mock object)
-        assert mock_get_temp_directory.called
+        with mock_client_response(client, "post", 200, mock_get_bucket_objects.return_value) as mock_post:
+            response = client.post(f"/v1/oci/objects/download/{bucket}/DEFAULT", headers=TEST_HEADERS, json=payload)
+            assert response.status_code == 200
+            assert set(response.json()) == set(mock_get_bucket_objects.return_value)
+            # Verify the mock was called
+            mock_get_object.assert_called_once()
