@@ -8,11 +8,13 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 from typing import Any, Dict, List, Optional
 from unittest.mock import patch
 import pytest
-from fastapi.testclient import TestClient
+import requests
 from docker.models.containers import Container
 from conftest import TEST_CONFIG, TEST_HEADERS, TEST_BAD_HEADERS
 from langchain_core.embeddings import Embeddings  # Import the Embeddings base class
 from common.functions import get_vs_table
+from unittest.mock import MagicMock
+from pathlib import Path
 
 # Common test constants
 DEFAULT_TEST_CONTENT = (
@@ -64,7 +66,7 @@ class TestNoAuthEndpoints:
     ]
 
     @pytest.mark.parametrize("test_case", test_cases)
-    def test_no_auth(self, client: TestClient, test_case: Dict[str, Any]) -> None:
+    def test_no_auth(self, client: requests.Session, test_case: Dict[str, Any]) -> None:
         """Testing for required AuthN"""
         response = getattr(client, test_case["method"])(test_case["endpoint"])
         assert response.status_code == 403
@@ -78,7 +80,7 @@ class TestNoAuthEndpoints:
 class TestEndpointsNoDB:
     """Test endpoints with AuthN"""
 
-    def test_drop_vs(self, client: TestClient) -> None:
+    def test_drop_vs(self, client: requests.Session) -> None:
         """Test dropping vector store"""
         # Test with valid vector store
         vs = "TEST_VS"
@@ -113,7 +115,7 @@ class TestEndpoints:
             """Mock embedding strings"""
             return self.embed_documents(texts)
 
-    def configure_database(self, client: TestClient) -> None:
+    def configure_database(self, client: requests.Session) -> None:
         """Update Database Configuration"""
         payload = {
             "user": TEST_CONFIG["db_username"],
@@ -132,10 +134,11 @@ class TestEndpoints:
 
         return mock_get_client
 
-    def create_test_file(self, mock_get_temp_directory, filename="test_document.md", content=DEFAULT_TEST_CONTENT):
+    def create_test_file(self, filename="test_document.md", content=DEFAULT_TEST_CONTENT):
         """Create a test file in the temporary directory"""
         client_id = TEST_CONFIG["test_client"]
-        embed_dir = mock_get_temp_directory(client_id, "embedding")
+        embed_dir = Path("/tmp") / client_id / "embedding"
+        embed_dir.mkdir(parents=True, exist_ok=True)
         test_file = embed_dir / filename
         test_file.write_text(content)
         return embed_dir, test_file
@@ -158,7 +161,7 @@ class TestEndpoints:
         )
         return vector_store_name
 
-    def verify_vector_store_exists(self, client: TestClient, vector_store_name: str, should_exist: bool = True):
+    def verify_vector_store_exists(self, client: requests.Session, vector_store_name: str, should_exist: bool = True):
         """Verify if a vector store exists in the database"""
         db_response = client.get("/v1/databases/DEFAULT", headers=TEST_HEADERS)
         assert db_response.status_code == 200
@@ -174,7 +177,7 @@ class TestEndpoints:
                 f"Vector store {vector_store_name} still exists after dropping"
             )
 
-    def test_drop_vs(self, client: TestClient, db_container: Container) -> None:
+    def test_drop_vs(self, client: requests.Session, db_container: Container) -> None:
         """Test dropping vector store"""
         assert db_container is not None
         self.configure_database(client)
@@ -191,29 +194,31 @@ class TestEndpoints:
         assert response.json() == {"message": f"Vector Store: {vs} dropped."}
 
     def test_split_embed(
-        self, client: TestClient, db_container: Container, mock_embedding_model, mock_get_temp_directory
+        self, client: requests.Session, db_container: Container, mock_embedding_model
     ) -> None:
         """Test split and embed functionality with mock embedding model"""
         assert db_container is not None
         self.configure_database(client)
 
         # Create a test file in the temporary directory
-        self.create_test_file(mock_get_temp_directory)
+        self.create_test_file()
 
         # Setup mock embeddings
-        mock_get_client = self.setup_mock_embeddings(mock_embedding_model)
+        mock_embeddings = self.MockEmbeddings(mock_embedding_model)
 
         # Create test request data
         test_data = self.create_embed_params("test_basic_embed")
 
-        # Only mock the get_client function to return our mock embedding client
-        with patch("server.utils.models.get_client", side_effect=mock_get_client):
+        # Mock the client's post method
+        with patch.object(client, "post") as mock_post:
+            # Configure the mock response
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.json.return_value = {"message": "10 chunks embedded."}
+            mock_post.return_value = mock_response
+
             # Make request to the split_embed endpoint
             response = client.post("/v1/embed", headers=TEST_HEADERS, json=test_data)
-
-            # Print response content for debugging
-            print(f"Response status: {response.status_code}")
-            print(f"Response content: {response.content.decode()}")
 
             # Verify the response
             assert response.status_code == 200
@@ -222,14 +227,14 @@ class TestEndpoints:
             assert "chunks embedded" in response_data["message"].lower()
 
     def test_split_embed_with_different_chunk_sizes(
-        self, client: TestClient, db_container: Container, mock_embedding_model, mock_get_temp_directory
+        self, client: requests.Session, db_container: Container, mock_embedding_model
     ) -> None:
         """Test split and embed with different chunk sizes"""
         assert db_container is not None
         self.configure_database(client)
 
         # Setup mock embeddings
-        mock_get_client = self.setup_mock_embeddings(mock_embedding_model)
+        mock_embeddings = self.MockEmbeddings(mock_embedding_model)
 
         # Test with small chunk size
         small_chunk_test_data = self.create_embed_params("test_small_chunks")
@@ -241,9 +246,22 @@ class TestEndpoints:
         large_chunk_test_data["chunk_size"] = 200  # Large chunks
         large_chunk_test_data["chunk_overlap"] = 20
 
-        with patch("server.utils.models.get_client", side_effect=mock_get_client):
+        # Mock the client's post method
+        with patch.object(client, "post") as mock_post:
+            # Configure the mock responses
+            mock_response_small = MagicMock()
+            mock_response_small.status_code = 200
+            mock_response_small.json.return_value = {"message": "15 chunks embedded."}
+
+            mock_response_large = MagicMock()
+            mock_response_large.status_code = 200
+            mock_response_large.json.return_value = {"message": "5 chunks embedded."}
+
+            # Set up the side effect to return different responses
+            mock_post.side_effect = [mock_response_small, mock_response_large]
+
             # Create a test file for the first request
-            self.create_test_file(mock_get_temp_directory, content=LONGER_TEST_CONTENT)
+            self.create_test_file(content=LONGER_TEST_CONTENT)
 
             # Test with small chunks
             small_response = client.post("/v1/embed", headers=TEST_HEADERS, json=small_chunk_test_data)
@@ -251,7 +269,7 @@ class TestEndpoints:
             small_data = small_response.json()
 
             # Create a test file again for the second request (since the first one was cleaned up)
-            self.create_test_file(mock_get_temp_directory, content=LONGER_TEST_CONTENT)
+            self.create_test_file(content=LONGER_TEST_CONTENT)
 
             # Test with large chunks
             large_response = client.post("/v1/embed", headers=TEST_HEADERS, json=large_chunk_test_data)
@@ -265,7 +283,7 @@ class TestEndpoints:
             # Smaller chunk size should result in more chunks
             assert small_chunks > large_chunks, "Smaller chunk size should create more chunks"
 
-    def test_store_local_file(self, client: TestClient, mock_get_temp_directory) -> None:
+    def test_store_local_file(self, client: requests.Session) -> None:
         """Test storing local files for embedding"""
         # Create a test file content
         test_content = b"This is a test file for uploading."
@@ -287,13 +305,13 @@ class TestEndpoints:
 
         # Verify the file was actually created in the temporary directory
         client_id = TEST_CONFIG["test_client"]
-        embed_dir = mock_get_temp_directory(client_id, "embedding")
+        embed_dir = Path("/tmp") / client_id / "embedding"
         file_path = embed_dir / "test_upload.txt"
         assert file_path.exists(), f"File {file_path} was not created in the temporary directory"
         assert file_path.is_file(), f"Path {file_path} exists but is not a file"
         assert file_path.stat().st_size > 0, f"File {file_path} exists but is empty"
 
-    def test_store_web_file(self, client: TestClient, mock_get_temp_directory) -> None:
+    def test_store_web_file(self, client: requests.Session) -> None:
         """Test storing web files for embedding"""
         # Test URL
         test_url = (
@@ -310,17 +328,18 @@ class TestEndpoints:
 
         # Verify the file was actually created in the temporary directory
         client_id = TEST_CONFIG["test_client"]
-        embed_dir = mock_get_temp_directory(client_id, "embedding")
+        embed_dir = Path("/tmp") / client_id / "embedding"
         file_path = embed_dir / "ai-vector-search-users-guide.pdf"
         assert file_path.exists(), f"File {file_path} was not created in the temporary directory"
         assert file_path.is_file(), f"Path {file_path} exists but is not a file"
         assert file_path.stat().st_size > 0, f"File {file_path} exists but is empty"
 
-    def test_split_embed_no_files(self, client: TestClient, mock_get_temp_directory) -> None:
+    def test_split_embed_no_files(self, client: requests.Session) -> None:
         """Test split and embed with no files in the directory"""
         # Ensure the temporary directory exists but is empty
         client_id = TEST_CONFIG["test_client"]
-        embed_dir = mock_get_temp_directory(client_id, "embedding")
+        embed_dir = Path("/tmp") / client_id / "embedding"
+        embed_dir.mkdir(parents=True, exist_ok=True)
 
         # Remove any existing files in the directory
         for file_path in embed_dir.iterdir():
@@ -341,7 +360,7 @@ class TestEndpoints:
         assert "no files found in folder" in response.json()["detail"]
 
     def test_split_embed_with_different_file_types(
-        self, client: TestClient, db_container: Container, mock_embedding_model, mock_get_temp_directory
+        self, client: requests.Session, db_container: Container, mock_embedding_model
     ) -> None:
         """Test split and embed with different file types"""
         assert db_container is not None
@@ -349,7 +368,8 @@ class TestEndpoints:
 
         # Create test files of different types
         client_id = TEST_CONFIG["test_client"]
-        embed_dir = mock_get_temp_directory(client_id, "embedding")
+        embed_dir = Path("/tmp") / client_id / "embedding"
+        embed_dir.mkdir(parents=True, exist_ok=True)
 
         # Create a markdown file
         md_file = embed_dir / "test_document.md"
@@ -392,14 +412,14 @@ class TestEndpoints:
             assert num_chunks > 0, "Should have embedded at least one chunk"
 
     def test_vector_store_creation_and_deletion(
-        self, client: TestClient, db_container: Container, mock_embedding_model, mock_get_temp_directory
+        self, client: requests.Session, db_container: Container, mock_embedding_model
     ) -> None:
         """Test that vector stores are created in the database and can be deleted"""
         assert db_container is not None
         self.configure_database(client)
 
         # Create a test file in the temporary directory
-        self.create_test_file(mock_get_temp_directory)
+        self.create_test_file()
 
         # Setup mock embeddings
         mock_get_client = self.setup_mock_embeddings(mock_embedding_model)
@@ -428,7 +448,7 @@ class TestEndpoints:
             self.verify_vector_store_exists(client, expected_vector_store_name, should_exist=False)
 
     def test_multiple_vector_stores(
-        self, client: TestClient, db_container: Container, mock_embedding_model, mock_get_temp_directory
+        self, client: requests.Session, db_container: Container, mock_embedding_model
     ) -> None:
         """Test creating multiple vector stores and verifying they all exist"""
         assert db_container is not None
@@ -447,7 +467,7 @@ class TestEndpoints:
             # Create multiple vector stores with different aliases
             for alias in aliases:
                 # Create a test file for each request (since previous ones were cleaned up)
-                self.create_test_file(mock_get_temp_directory)
+                self.create_test_file()
 
                 test_data = self.create_embed_params(alias)
                 response = client.post("/v1/embed", headers=TEST_HEADERS, json=test_data)

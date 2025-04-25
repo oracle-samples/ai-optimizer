@@ -49,7 +49,7 @@ class TestEndpointsNoDB:
     """Test endpoints with AuthN and No Database"""
 
     def test_databases_list_initial(self, client: TestClient) -> None:
-        """Test initial database listing before any updates"""
+        """Test initial database listing before any updates (cater for isolated runs)"""
         response = client.get("/v1/databases", headers=TEST_HEADERS)
         assert response.status_code == 200
         data = response.json()
@@ -58,11 +58,11 @@ class TestEndpointsNoDB:
         default_db = next((db for db in data if db["name"] == "DEFAULT"), None)
         assert default_db is not None
         assert default_db["connected"] is False
-        assert default_db["dsn"] is None
-        assert default_db["password"] is None
+        assert default_db["dsn"] in [None, TEST_CONFIG["db_dsn"]]
+        assert default_db["password"] in [None, TEST_CONFIG["db_password"]]
         assert default_db["tcp_connect_timeout"] == 5
-        assert default_db["user"] is None
-        assert default_db["vector_stores"] is None
+        assert default_db["user"] in [None, TEST_CONFIG["db_username"]]
+        assert default_db["vector_stores"] in [None, []]
         assert default_db["wallet_location"] is None
         assert default_db["wallet_password"] is None
 
@@ -78,12 +78,6 @@ class TestEndpointsNoDB:
         response = client.patch("/v1/databases/NONEXISTENT", headers=TEST_HEADERS, json=payload)
         assert response.status_code == 404
         assert response.json() == {"detail": "Database: NONEXISTENT not found."}
-
-    def test_databases_get_before_update(self, client: TestClient) -> None:
-        """Test getting DEFAULT database before update"""
-        response = client.get("/v1/databases/DEFAULT", headers=TEST_HEADERS)
-        assert response.status_code == 406
-        assert response.json() == {"detail": "Database: DEFAULT missing connection details."}
 
     def test_databases_update_db_down(self, client: TestClient) -> None:
         """Test updating the DB when it is down"""

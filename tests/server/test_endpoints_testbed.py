@@ -10,7 +10,7 @@ import io
 from typing import Any, Dict
 from unittest.mock import patch, MagicMock
 import pytest
-from fastapi.testclient import TestClient
+import requests
 from conftest import TEST_CONFIG, TEST_HEADERS, TEST_BAD_HEADERS
 from common.schema import TestSetQA as QATestSet, Evaluation, EvaluationReport
 
@@ -57,7 +57,7 @@ class TestNoAuthEndpoints:
     ]
 
     @pytest.mark.parametrize("test_case", test_cases)
-    def test_no_auth(self, client: TestClient, test_case: Dict[str, Any]) -> None:
+    def test_no_auth(self, client: requests.Session, test_case: Dict[str, Any]) -> None:
         """Testing for required AuthN"""
         response = getattr(client, test_case["method"])(test_case["endpoint"])
         assert response.status_code == 403
@@ -71,7 +71,7 @@ class TestNoAuthEndpoints:
 class TestTestbedEndpoints:
     """Test testbed endpoints with AuthN"""
 
-    def setup_database(self, client: TestClient, db_container):
+    def setup_database(self, client: requests.Session, db_container):
         """Setup database connection for tests"""
         assert db_container is not None
         payload = {
@@ -86,7 +86,7 @@ class TestTestbedEndpoints:
         response = client.get("/v1/testbed/testsets", headers=TEST_HEADERS)
         assert response.status_code == 200
 
-    def test_testbed_testsets_empty(self, client: TestClient, db_container):
+    def test_testbed_testsets_empty(self, client: requests.Session, db_container):
         """Test getting empty testsets list"""
         self.setup_database(client, db_container)
 
@@ -95,7 +95,7 @@ class TestTestbedEndpoints:
             assert response.status_code == 200
             assert response.json() == []
 
-    def test_testbed_testsets_with_data(self, client: TestClient, db_container):
+    def test_testbed_testsets_with_data(self, client: requests.Session, db_container):
         """Test getting testsets with data"""
         self.setup_database(client, db_container)
 
@@ -125,7 +125,7 @@ class TestTestbedEndpoints:
         assert "tid" in test_set_1
         assert "tid" in test_set_2
 
-    def test_testbed_testset_qa(self, client: TestClient, db_container):
+    def test_testbed_testset_qa(self, client: requests.Session, db_container):
         """Test getting testset Q&A data"""
         self.setup_database(client, db_container)
 
@@ -164,7 +164,7 @@ class TestTestbedEndpoints:
         assert "X is Y" in answers
         assert "Z is W" in answers
 
-    def test_testbed_evaluations_empty(self, client: TestClient, db_container):
+    def test_testbed_evaluations_empty(self, client: requests.Session, db_container):
         """Test getting empty evaluations list"""
         self.setup_database(client, db_container)
 
@@ -173,7 +173,7 @@ class TestTestbedEndpoints:
             assert response.status_code == 200
             assert response.json() == []
 
-    def test_testbed_evaluations_with_data(self, client: TestClient, db_container):
+    def test_testbed_evaluations_with_data(self, client: requests.Session, db_container):
         """Test getting evaluations with data"""
         self.setup_database(client, db_container)
 
@@ -210,7 +210,7 @@ class TestTestbedEndpoints:
             assert evaluations[1]["eid"] == "eval2"
             assert evaluations[1]["correctness"] == 0.92
 
-    def test_testbed_evaluation(self, client: TestClient, db_container):
+    def test_testbed_evaluation(self, client: requests.Session, db_container):
         """Test getting a single evaluation report"""
         self.setup_database(client, db_container)
 
@@ -257,7 +257,7 @@ class TestTestbedEndpoints:
             assert "correct_by_topic" in report
             assert "failures" in report
 
-    def test_testbed_delete_testset(self, client: TestClient, db_container):
+    def test_testbed_delete_testset(self, client: requests.Session, db_container):
         """Test deleting a testset"""
         self.setup_database(client, db_container)
 
@@ -265,7 +265,7 @@ class TestTestbedEndpoints:
         assert response.status_code == 200
         assert "message" in response.json()
 
-    def test_testbed_upsert_testsets(self, client: TestClient, db_container):
+    def test_testbed_upsert_testsets(self, client: requests.Session, db_container):
         """Test upserting testsets"""
         self.setup_database(client, db_container)
 
@@ -290,7 +290,7 @@ class TestTestbedEndpoints:
         assert response.json()["qa_data"][0]["question"] == "Test Q?"
         assert response.json()["qa_data"][0]["answer"] == "Test A"
 
-    def test_testbed_generate_qa(self, client: TestClient, db_container):
+    def test_testbed_generate_qa(self, client: requests.Session, db_container):
         """Test generating Q&A testset"""
         self.setup_database(client, db_container)
 
@@ -325,7 +325,7 @@ class TestTestbedEndpoints:
             assert response.status_code == 200
             assert mock_post.called
 
-    def test_testbed_evaluate_qa(self, client: TestClient, db_container):
+    def test_testbed_evaluate_qa(self, client: requests.Session, db_container):
         """Test evaluating Q&A testset"""
         self.setup_database(client, db_container)
 
@@ -381,7 +381,7 @@ class TestTestbedEndpoints:
         response = client.delete(f"/v1/testbed/testset_delete/{tid}", headers=TEST_HEADERS)
         assert response.status_code == 200
 
-    def test_end_to_end_testbed_flow(self, client: TestClient, db_container):
+    def test_end_to_end_testbed_flow(self, client: requests.Session, db_container):
         """Test the complete testbed workflow"""
         self.setup_database(client, db_container)
 

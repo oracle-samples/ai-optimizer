@@ -107,33 +107,6 @@ def wait_for_container_ready(container, ready_output, since=None):
 #####################################################
 # Mocks
 #####################################################
-@pytest.fixture(name="mock_get_temp_directory", scope="session")
-def _mock_get_temp_directory(tmp_path_factory):
-    """Mock get_temp_directory to return a writable temporary path for each client/function combination.
-
-    This fixture maintains the same directories across different tests within a session,
-    allowing tests to build upon each other's file operations. Directories are cleaned up
-    after the entire test session is complete.
-    """
-    temp_dirs = {}
-
-    def _get_temp_directory(client, function):
-        """Mock implementation that creates unique directories for each client/function pair"""
-        key = f"{client}_{function}"
-        if key not in temp_dirs:
-            temp_dirs[key] = tmp_path_factory.mktemp(key)
-        temp_dirs[key].mkdir(parents=True, exist_ok=True)
-        return temp_dirs[key]
-
-    with patch("server.endpoints.get_temp_directory", side_effect=_get_temp_directory) as mock:
-        yield mock
-
-    # Clean up all temporary directories after the test session
-    for temp_dir in temp_dirs.values():
-        if temp_dir.exists():
-            shutil.rmtree(temp_dir, ignore_errors=True)
-
-
 @pytest.fixture(name="mock_get_namespace")
 def _mock_get_namespace():
     """Mock server_oci.get_namespace"""
@@ -155,20 +128,39 @@ def _mock_init_client():
 #####################################################
 # Fixtures
 #####################################################
+def get_base_url() -> str:
+    """Get the base URL for the server"""
+    base_url = f"{os.environ['API_SERVER_URL']}:{os.environ['API_SERVER_PORT']}"
+    if not base_url.startswith(("http://", "https://")):
+        base_url = f"http://{base_url}"
+    return base_url
+
+
 @pytest.fixture(scope="session", name="client")
-def _client() -> Generator[TestClient, None, None]:
-    """Create test client with auth"""
+def _client() -> Generator[requests.Session, None, None]:
+    """Create test client that connects to the running FastAPI server"""
     # Prevent picking up default OCI config file
     os.environ["OCI_CLI_CONFIG_FILE"] = "/non/existant/path"
 
-    # Lazy import to ensure OS env is clean
-    from launch_server import create_app
+    # Wait for server to be ready
+    wait_for_server()
 
-    app = create_app()
-    with TestClient(app) as client:
-        # Bootstrap Settings
-        client.post("/v1/settings", headers=TEST_HEADERS, params={"client": TEST_CONFIG["test_client"]})
-        yield client
+    # Create a session for making requests
+    session = requests.Session()
+
+    # Store the original request method
+    original_request = session.request
+
+    # Add a simple method to make requests with the base URL
+    def make_request(method, url, **kwargs):
+        if not url.startswith(("http://", "https://")):
+            url = f"{get_base_url()}{url}"
+        return original_request(method, url, **kwargs)
+
+    # Add the method to the session
+    session.request = make_request
+
+    yield session
 
 
 @pytest.fixture(scope="session")
@@ -373,7 +365,15 @@ def start_fastapi_server():
 
     server_process = subprocess.Popen(["python", "launch_server.py"], cwd="src")
     wait_for_server()
+
+    # Bootstrap Settings
+    response = requests.post(
+        f"{get_base_url()}/v1/settings", headers=TEST_HEADERS, params={"client": TEST_CONFIG["test_client"]}
+    )
+    assert response.status_code == 200, "Failed to bootstrap settings"
+
     yield
+
     # Terminate the server after tests
     server_process.terminate()
     server_process.wait()

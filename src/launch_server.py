@@ -33,7 +33,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 import common.logging_config as logging_config
 
 # Endpoints
-from server.endpoints import register_endpoints
+import server.endpoints as endpoints
 
 logger = logging_config.logging.getLogger("launch_server")
 
@@ -159,7 +159,7 @@ def create_app() -> FastAPI:
     auth = APIRouter(dependencies=[Depends(verify_key)])
 
     # Register Endpoints
-    register_endpoints(noauth, auth)
+    endpoints.register_endpoints(noauth, auth)
     app.include_router(noauth)
     app.include_router(auth)
 

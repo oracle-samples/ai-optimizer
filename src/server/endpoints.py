@@ -54,8 +54,10 @@ OCI_OBJECTS = None
 PROMPT_OBJECTS = None
 SETTINGS_OBJECTS = None
 
+
 def load_shared_objects() -> None:
     "Load Models with Definition Data"
+    logger.info("Bootstrapping...")
     global DATABASE_OBJECTS
     DATABASE_OBJECTS = bootstrap.database_def.main()
     global MODEL_OBJECTS

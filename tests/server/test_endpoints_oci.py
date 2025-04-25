@@ -8,7 +8,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 from typing import Any, Dict
 from unittest.mock import patch
 import pytest
-from fastapi.testclient import TestClient
+import requests
 from conftest import TEST_HEADERS, TEST_BAD_HEADERS
 
 
@@ -102,7 +102,7 @@ class TestNoAuthEndpoints:
     ]
 
     @pytest.mark.parametrize("test_case", test_cases)
-    def test_no_auth(self, client: TestClient, test_case: Dict[str, Any]) -> None:
+    def test_no_auth(self, client: requests.Session, test_case: Dict[str, Any]) -> None:
         """Testing for required AuthN"""
         response = getattr(client, test_case["method"])(test_case["endpoint"])
         assert response.status_code == 403
@@ -133,14 +133,14 @@ class TestEndpoints:
         "authentication": "api_key",
     }
 
-    def test_oci_list(self, client: TestClient) -> None:
+    def test_oci_list(self, client: requests.Session) -> None:
         """List OCI Configuration"""
         response = client.get("/v1/oci", headers=TEST_HEADERS)
         assert response.status_code == 200
         data = response.json()
         assert data == [self.DEFAULT_CONFIG]
 
-    def test_oci_get(self, client: TestClient):
+    def test_oci_get(self, client: requests.Session):
         """List OCI Configuration"""
         response = client.get("/v1/oci/DEFAULT", headers=TEST_HEADERS)
         assert response.status_code == 200
@@ -150,7 +150,7 @@ class TestEndpoints:
         assert response.status_code == 404
         assert response.json() == {"detail": "OCI: Profile TEST not found."}
 
-    def test_oci_list_compartments(self, client: TestClient, mock_get_compartments):
+    def test_oci_list_compartments(self, client: requests.Session, mock_get_compartments):
         """List OCI Compartments"""
         response = client.get("/v1/oci/compartments/DEFAULT", headers=TEST_HEADERS)
         assert response.status_code == 200
@@ -159,7 +159,7 @@ class TestEndpoints:
         assert response.status_code == 404
         assert response.json() == {"detail": "OCI: Profile TEST not found."}
 
-    def test_oci_list_buckets(self, client: TestClient, mock_get_buckets):
+    def test_oci_list_buckets(self, client: requests.Session, mock_get_buckets):
         """List OCI Buckets"""
         response = client.get("/v1/oci/buckets/ocid1.compartment.oc1..aaaaaaaa/DEFAULT", headers=TEST_HEADERS)
         assert response.status_code == 200
@@ -168,7 +168,7 @@ class TestEndpoints:
         assert response.status_code == 404
         assert response.json() == {"detail": "OCI: Profile TEST not found."}
 
-    def test_oci_list_bucket_objects(self, client: TestClient, mock_get_bucket_objects):
+    def test_oci_list_bucket_objects(self, client: requests.Session, mock_get_bucket_objects):
         """List OCI Bucket Objects"""
         response = client.get("/v1/oci/objects/bucket1/DEFAULT", headers=TEST_HEADERS)
         assert response.status_code == 200
@@ -225,7 +225,7 @@ class TestEndpoints:
     ]
 
     @pytest.mark.parametrize("test_case", test_cases)
-    def test_oci_profile_update(self, client: TestClient, test_case: Dict[str, Any], mock_get_namespace):
+    def test_oci_profile_update(self, client: requests.Session, test_case: Dict[str, Any], mock_get_namespace):
         """Update Profile"""
         response = client.patch(f"/v1/oci/{test_case['profile']}", headers=TEST_HEADERS, json=test_case["payload"])
         assert response.status_code == test_case["status_code"]
@@ -235,7 +235,7 @@ class TestEndpoints:
 
     def test_oci_download_objects(
         self,
-        client: TestClient,
+        client: requests.Session,
         mock_get_compartments,
         mock_get_buckets,
         mock_get_bucket_objects,
