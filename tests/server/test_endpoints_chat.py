@@ -5,11 +5,8 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 # spell-checker: disable
 # pylint: disable=import-error
 
-from typing import Any, Dict
 from unittest.mock import patch, MagicMock
 import pytest
-import requests
-from conftest import TEST_HEADERS, TEST_BAD_HEADERS
 from langchain_core.messages import ChatMessage
 from common.schema import ChatRequest
 
@@ -17,40 +14,37 @@ from common.schema import ChatRequest
 #############################################################################
 # Test AuthN required and Valid
 #############################################################################
-class TestNoAuthEndpoints:
-    """Test endpoints without AuthN"""
+class TestInvalidAuthEndpoints:
+    """Test endpoints without Headers and Invalid AuthN"""
 
-    test_cases = [
-        pytest.param(
-            {"endpoint": "/v1/chat/completions", "method": "post"},
-            id="chat_post",
-        ),
-        pytest.param(
-            {"endpoint": "/v1/chat/streams", "method": "post"},
-            id="chat_stream",
-        ),
-        pytest.param(
-            {"endpoint": "/v1/chat/history", "method": "get"},
-            id="chat_history",
-        ),
-    ]
-
-    @pytest.mark.parametrize("test_case", test_cases)
-    def test_no_auth(self, client: requests.Session, test_case: Dict[str, Any]) -> None:
-        """Testing for required AuthN"""
-        response = client.request(test_case["method"], test_case["endpoint"])
-        assert response.status_code == 403
-        response = client.request(test_case["method"], test_case["endpoint"], headers=TEST_BAD_HEADERS)
-        assert response.status_code == 401
+    @pytest.mark.parametrize(
+        "auth_type, status_code",
+        [
+            pytest.param("no_auth", 403, id="no_auth"),
+            pytest.param("invalid_auth", 401, id="invalid_auth"),
+        ],
+    )
+    @pytest.mark.parametrize(
+        "endpoint, api_method",
+        [
+            pytest.param("/v1/chat/completions", "post", id="chat_post"),
+            pytest.param("/v1/chat/streams", "post", id="chat_stream"),
+            pytest.param("/v1/chat/history", "get", id="chat_history"),
+        ],
+    )
+    def test_endpoints(self, client, auth_headers, endpoint, api_method, auth_type, status_code):
+        """Test endpoints require valide authentication."""
+        response = getattr(client, api_method)(endpoint, headers=auth_headers[auth_type])
+        assert response.status_code == status_code
 
 
 #############################################################################
-# Test Chat Completions
+# Endpoints Test
 #############################################################################
-class TestChatCompletions:
-    """Test chat completion endpoints"""
+class TestEndpoints:
+    """Test Endpoints"""
 
-    def test_chat_completion_no_model(self, client: requests.Session):
+    def test_chat_completion_no_model(self, client, auth_headers):
         """Test no model chat completion request"""
         request = ChatRequest(
             messages=[ChatMessage(content="Hello", role="user")],
@@ -59,15 +53,15 @@ class TestChatCompletions:
             max_completion_tokens=256,
         )
 
-        response = client.post("/v1/chat/completions", headers=TEST_HEADERS, json=request.model_dump())
+        response = client.post("/v1/chat/completions", headers=auth_headers["valid_auth"], json=request.model_dump())
         assert response.status_code == 200
         assert "choices" in response.json()
         assert (
             response.json()["choices"][0]["message"]["content"]
-            == "I'm sorry, I'm unable to initialise the Language Model. Please refresh the application."
+            == "I'm unable to initialise the Language Model. Please refresh the application."
         )
 
-    def test_chat_completion_valid_mock(self, client: requests.Session):
+    def test_chat_completion_valid_mock(self, client, auth_headers):
         """Test valid chat completion request"""
         # Create the mock response
         mock_response = {
@@ -100,19 +94,14 @@ class TestChatCompletions:
                 max_completion_tokens=256,
             )
 
-            response = client.post("/v1/chat/completions", headers=TEST_HEADERS, json=request.model_dump())
+            response = client.post(
+                "/v1/chat/completions", headers=auth_headers["valid_auth"], json=request.model_dump()
+            )
             assert response.status_code == 200
             assert "choices" in response.json()
             assert response.json()["choices"][0]["message"]["content"] == "Test response"
 
-
-#############################################################################
-# Test Chat Streaming
-#############################################################################
-class TestChatStreaming:
-    """Test chat streaming endpoints"""
-
-    def test_chat_stream_valid_mock(self, client: requests.Session):
+    def test_chat_stream_valid_mock(self, client, auth_headers):
         """Test valid chat stream request"""
         # Create the mock streaming response
         mock_streaming_response = MagicMock()
@@ -131,27 +120,20 @@ class TestChatStreaming:
                 streaming=True,
             )
 
-            response = client.post("/v1/chat/streams", headers=TEST_HEADERS, json=request.model_dump())
+            response = client.post("/v1/chat/streams", headers=auth_headers["valid_auth"], json=request.model_dump())
             assert response.status_code == 200
             content = b"".join(response.iter_bytes())
             assert b"Test streaming response" in content
 
-
-#############################################################################
-# Test Chat History
-#############################################################################
-class TestChatHistory:
-    """Test chat history endpoints"""
-
-    def test_chat_history_empty(self, client: requests.Session):
+    def test_chat_history_empty(self, client, auth_headers):
         """Test no model chat completion request"""
-        response = client.get("/v1/chat/history", headers=TEST_HEADERS)
+        response = client.get("/v1/chat/history", headers=auth_headers["valid_auth"])
         assert response.status_code == 200
         history = response.json()
         assert history[0]["role"] == "system"
         assert history[0]["content"] == "I'm sorry, I have no history of this conversation"
 
-    def test_chat_history_valid_mock(self, client: requests.Session):
+    def test_chat_history_valid_mock(self, client, auth_headers):
         """Test valid chat history request"""
         # Create the mock history response
         mock_history = [{"role": "user", "content": "Hello"}, {"role": "assistant", "content": "Hi there!"}]
@@ -164,7 +146,7 @@ class TestChatHistory:
             mock_response_obj.json.return_value = mock_history
             mock_get.return_value = mock_response_obj
 
-            response = client.get("/v1/chat/history", headers=TEST_HEADERS)
+            response = client.get("/v1/chat/history", headers=auth_headers["valid_auth"])
             assert response.status_code == 200
             history = response.json()
             assert len(history) == 2

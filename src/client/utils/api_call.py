@@ -137,9 +137,9 @@ def patch(
     timeout: int = 60,
     retries: int = 5,
     backoff_factor: float = 1.5,
-) -> None:
+) -> json:
     """PATCH Requests"""
-    send_request(
+    response = send_request(
         "PATCH",
         endpoint,
         payload=payload,
@@ -149,7 +149,7 @@ def patch(
         backoff_factor=backoff_factor,
     )
     st.toast("Update Successful.", icon="✅")
-
+    return response.json()
 
 def delete(
     endpoint: str,

@@ -73,36 +73,38 @@ def test_restore_returns_default_settings_on_invalid_settings_file():
     assert settings_from_json == default_settings
 
 
-@pytest.mark.parametrize(('is_file', 'has_access', 'file_read'),
+@pytest.mark.parametrize(
+    ("is_file", "has_access", "file_read"),
     [
         (True, True, True),
         (False, True, False),
         (True, False, False),
         (False, False, False),
-     ])
-@mock.patch('os.access')
-@mock.patch('os.path.isfile')
+    ],
+)
+@mock.patch("os.access")
+@mock.patch("os.path.isfile")
 def test_restore_reads_file_if_isfile_and_has_access(mock_isfile, mock_access, is_file, has_access, file_read):
     client = "default"
-    path = 'some_path/some_file.json'
+    path = "some_path/some_file.json"
     mock_isfile.return_value = is_file
     mock_access.return_value = has_access
     mocked_open = mock.mock_open(read_data="")
-    with mock.patch('builtins.open', mocked_open) as mock_open:
+    with mock.patch("builtins.open", mocked_open) as mock_open:
         settings_from_file = restore_or_default_settings(client, path)
         if file_read:
-            mock_open.assert_called_with(path, 'r')
+            mock_open.assert_called_with(path, "r", encoding="UTF-8")
 
     mock_isfile.assert_called_with(path)
     if is_file:
         mock_access.assert_called_with(path, os.R_OK)
 
 
-@mock.patch('os.access')
-@mock.patch('os.path.isfile')
+@mock.patch("os.access")
+@mock.patch("os.path.isfile")
 def test_restore_returns_default_settings_from_bad_json(mock_isfile, mock_access):
     client = "default"
-    path = 'some_path/some_file.json'
+    path = "some_path/some_file.json"
     json = """
     { "client": "default",
       "prompts": { "ctx": "Another Example",
@@ -112,9 +114,9 @@ def test_restore_returns_default_settings_from_bad_json(mock_isfile, mock_access
     mock_isfile.return_value = True
     mock_access.return_value = True
     mocked_open = mock.mock_open(read_data=json)
-    with mock.patch('builtins.open', mocked_open) as mock_open:
+    with mock.patch("builtins.open", mocked_open) as mock_open:
         settings_from_file = restore_or_default_settings(client, path)
-        mock_open.assert_called_with(path, 'r')
+        mock_open.assert_called_with(path, "r", encoding="UTF-8")
 
     default_settings = Settings(client=client)
 
@@ -123,11 +125,11 @@ def test_restore_returns_default_settings_from_bad_json(mock_isfile, mock_access
     assert settings_from_file == default_settings
 
 
-@mock.patch('os.access')
-@mock.patch('os.path.isfile')
+@mock.patch("os.access")
+@mock.patch("os.path.isfile")
 def test_restore_returns_settings_from_json(mock_isfile, mock_access):
     client = "default"
-    path = 'some_path/some_file.json'
+    path = "some_path/some_file.json"
     json = """
     { "client": "default",
       "ll_model": { "context_length": null,
@@ -162,9 +164,9 @@ def test_restore_returns_settings_from_json(mock_isfile, mock_access):
     mock_isfile.return_value = True
     mock_access.return_value = True
     mocked_open = mock.mock_open(read_data=json)
-    with mock.patch('builtins.open', mocked_open) as mock_open:
+    with mock.patch("builtins.open", mocked_open) as mock_open:
         settings_from_file = restore_or_default_settings(client, path)
-        mock_open.assert_called_with(path, 'r')
+        mock_open.assert_called_with(path, "r", encoding="UTF-8")
 
     default_settings = Settings(client=client)
     default_settings.ll_model.temperature = 1.2
@@ -172,4 +174,3 @@ def test_restore_returns_settings_from_json(mock_isfile, mock_access):
     mock_isfile.assert_called_once_with(path)
     mock_access.assert_called_once_with(path, os.R_OK)
     assert settings_from_file == default_settings
-

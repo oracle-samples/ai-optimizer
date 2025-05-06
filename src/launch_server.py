@@ -158,6 +158,9 @@ def create_app() -> FastAPI:
     noauth = APIRouter()
     auth = APIRouter(dependencies=[Depends(verify_key)])
 
+    # Bootstrap Configuration
+    endpoints.load_shared_objects()
+
     # Register Endpoints
     endpoints.register_endpoints(noauth, auth)
     app.include_router(noauth)
@@ -170,6 +173,5 @@ if __name__ == "__main__":
     PORT = int(os.getenv("API_SERVER_PORT", "8000"))
     logger.info("API Server Using port: %i", PORT)
 
-    endpoints.load_shared_objects()
     app = create_app()
     uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="info")

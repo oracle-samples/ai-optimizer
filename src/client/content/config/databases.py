@@ -50,7 +50,7 @@ def patch_database(name: str, user: str, password: str, dsn: str, wallet_passwor
     ):
         try:
             endpoint = f"v1/databases/{name}"
-            api_call.patch(
+            _ = api_call.patch(
                 endpoint=endpoint,
                 payload={
                     "json": {
