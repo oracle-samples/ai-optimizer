@@ -3,15 +3,16 @@ Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
 
-from server.bootstrap.settings_def import create_settings_from_json, restore_or_default_settings
-from common.schema import Settings, LanguageModelParameters
 import os
 import pytest
 import unittest.mock as mock
 
+from server.bootstrap.settings_def import create_settings_from_json, restore_or_default_settings
+from common.schema import Settings, LanguageModelParameters
 
-def test_create_settings_from_json_returns_right_settings():
-    json = """
+@pytest.fixture
+def valid_user_settings() -> str:
+    return """
     { "client": "default",
       "ll_model": { "context_length": null,
                     "frequency_penalty": 0.0,
@@ -42,15 +43,11 @@ def test_create_settings_from_json_returns_right_settings():
       "oci": { "auth_profile" :"DEFAULT" }
     }
     """
-    client = "default"
-    settings_from_json = create_settings_from_json(client, json)
-    some_settings = Settings(client=client)
-    some_settings.ll_model.temperature = 1.2
-    assert settings_from_json == some_settings
 
 
-def test_create_settings_from_json_returns_default_on_bad_json():
-    json = """
+@pytest.fixture
+def invalid_user_settings() -> str:
+    return """
     { "client": "default",
       "ll_model": { "context_length": null,
                     "frequency_penalty": 0.0,
@@ -60,8 +57,18 @@ def test_create_settings_from_json_returns_default_on_bad_json():
                     "top_p": 1.0,
       "move along, nothing to see here"
     """
+
+def test_create_settings_from_json_returns_right_settings(valid_user_settings):
     client = "default"
-    settings_from_json = create_settings_from_json(client, json)
+    settings_from_json = create_settings_from_json(client, valid_user_settings)
+    some_settings = Settings(client=client)
+    some_settings.ll_model.temperature = 1.2
+    assert settings_from_json == some_settings
+
+
+def test_create_settings_from_json_returns_default_on_bad_json(invalid_user_settings):
+    client = "default"
+    settings_from_json = create_settings_from_json(client, invalid_user_settings)
     some_settings = Settings(client=client)
     assert settings_from_json == some_settings
 
@@ -102,18 +109,12 @@ def test_restore_reads_file_if_isfile_and_has_access(mock_isfile, mock_access, i
 
 @mock.patch("os.access")
 @mock.patch("os.path.isfile")
-def test_restore_returns_default_settings_from_bad_json(mock_isfile, mock_access):
+def test_restore_returns_default_settings_from_bad_json(mock_isfile, mock_access, invalid_user_settings):
     client = "default"
     path = "some_path/some_file.json"
-    json = """
-    { "client": "default",
-      "prompts": { "ctx": "Another Example",
-                   "sys": "Yet another Example" },
-      "nothing_else_here" }
-    """
     mock_isfile.return_value = True
     mock_access.return_value = True
-    mocked_open = mock.mock_open(read_data=json)
+    mocked_open = mock.mock_open(read_data=invalid_user_settings)
     with mock.patch("builtins.open", mocked_open) as mock_open:
         settings_from_file = restore_or_default_settings(client, path)
         mock_open.assert_called_with(path, "r", encoding="UTF-8")
@@ -127,43 +128,12 @@ def test_restore_returns_default_settings_from_bad_json(mock_isfile, mock_access
 
 @mock.patch("os.access")
 @mock.patch("os.path.isfile")
-def test_restore_returns_settings_from_json(mock_isfile, mock_access):
+def test_restore_returns_settings_from_json(mock_isfile, mock_access, valid_user_settings):
     client = "default"
     path = "some_path/some_file.json"
-    json = """
-    { "client": "default",
-      "ll_model": { "context_length": null,
-                    "frequency_penalty": 0.0,
-                    "max_completion_tokens": 256,
-                    "presence_penalty": 0.0,
-                    "temperature": 1.2,
-                    "top_p": 1.0,
-                    "streaming": false,
-                    "model": null,
-                    "chat_history": true },
-      "prompts": { "ctx": "Basic Example",
-                   "sys": "Basic Example" },
-      "rag": { "database": "DEFAULT",
-               "vector_store": null,
-               "alias": null,
-               "model": null,
-               "chunk_size": null,
-               "chunk_overlap": null,
-               "distance_metric": null,
-               "index_type": null,
-               "rag_enabled": false,
-               "grading": true,
-               "search_type": "Similarity",
-               "top_k": 4,
-               "score_threshold": 0.0,
-               "fetch_k": 20,
-               "lambda_mult": 0.5 },
-      "oci": { "auth_profile" :"DEFAULT" }
-    }
-    """
     mock_isfile.return_value = True
     mock_access.return_value = True
-    mocked_open = mock.mock_open(read_data=json)
+    mocked_open = mock.mock_open(read_data=valid_user_settings)
     with mock.patch("builtins.open", mocked_open) as mock_open:
         settings_from_file = restore_or_default_settings(client, path)
         mock_open.assert_called_with(path, "r", encoding="UTF-8")

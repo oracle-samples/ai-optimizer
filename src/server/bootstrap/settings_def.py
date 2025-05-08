@@ -31,7 +31,7 @@ def create_settings_from_json(client: str, json: str) -> Settings:
     try:
         tmp_settings = Settings.model_validate_json(json)
         tmp_settings.client = client
-        logger.debug("Settings from JSON: %s", tmp_settings)
+        logger.debug(f"Settings from JSON: {tmp_settings}")
         return tmp_settings
     except ValueError:
         return Settings(client=client)
@@ -45,13 +45,13 @@ def restore_or_default_settings(client: str, settings_file: str = SETTINGS_PATH)
     client -- Client unique identifier
     settings_file -- Path to the settings file with default value, but can be injected for testing
     """
-    settings_json = ""
-    logger.debug("Settings file  %s", settings_file)
+    user_settings_json = ""
+    logger.debug(f"Settings file '{settings_file}'.")
     if os.path.isfile(settings_file) and os.access(settings_file, os.R_OK):
         with open(settings_file, "r", encoding="UTF-8") as file:
-            settings_json = file.read()
+            user_settings_json = file.read()
             logger.debug("Settings read from file.")
-    return create_settings_from_json(client, settings_json)
+    return create_settings_from_json(client, user_settings_json)
 
 
 def main() -> list[Settings]:

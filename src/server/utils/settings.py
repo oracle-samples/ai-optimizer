@@ -5,6 +5,7 @@ Licensed under the Universal Permissive License v 1.0 as shown at http://oss.ora
 # spell-checker:ignore
 
 import json
+import os
 
 from oracledb import Connection
 import server.utils.databases as databases
@@ -60,3 +61,15 @@ def upsert_settings(
     """
     logger.debug("Upsert PLSQL: %s", plsql)
     return databases.execute_sql(db_conn, plsql, binds)
+
+
+def default_settings_path() -> str:
+    """Return the path where settings should be stored.
+
+    It assumes that this module is in src/server/utils and removes
+    "server/utils/settings.py" from the path.
+    """
+    src_dir_comps = __file__.split(os.sep)[:-3]
+    src_dir_comps.extend(["etc", "settings.json"])
+
+    return os.sep.join(src_dir_comps)
