@@ -5,7 +5,6 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 # spell-checker:ignore fastapi, laddr, checkpointer, langgraph, litellm, noauth
 # pylint: disable=redefined-outer-name,wrong-import-position
 
-import argparse
 import os
 import queue
 import secrets
@@ -13,8 +12,6 @@ import socket
 import subprocess
 import threading
 from typing import Annotated
-from server.utils.settings import default_settings_path
-
 
 # Set OS Environment (Don't move their position to reflect on imports)
 os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
@@ -24,21 +21,17 @@ os.environ["USER_AGENT"] = "ai-optimizer"
 app_home = os.path.dirname(os.path.abspath(__file__))
 if "TNS_ADMIN" not in os.environ:
     os.environ["TNS_ADMIN"] = os.path.join(app_home, "tns_admin")
-# Get configuration file from the command line or get the best approach
-parser = argparse.ArgumentParser()
-parser.add_argument("-c", "--config", help="Full path to settings configuration file (JSON)")
-args = parser.parse_args()
-if args.config:
-    os.environ["CONFIG_FILE"] = args.config
-else:
-    os.environ["CONFIG_FILE"] = default_settings_path()
 
+import argparse
 import psutil
 import uvicorn
 from fastapi import FastAPI, HTTPException, Depends, status, APIRouter
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from server.utils.settings import default_settings_path
+
 # Endpoints
 import server.endpoints as endpoints
+
 # Logging
 import common.logging_config as logging_config
 
@@ -178,6 +171,19 @@ def create_app() -> FastAPI:
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-c",
+        "--config",
+        type=str,
+        default=default_settings_path(),
+        help="Full path to settings configuration file (JSON)",
+    )
+    args = parser.parse_args()
+
+    if "CONFIG_FILE" in os.environ:
+        args.config = os.environ["CONFIG_FILE"]
+
     PORT = int(os.getenv("API_SERVER_PORT", "8000"))
     logger.info("API Server Using port: %i", PORT)
 

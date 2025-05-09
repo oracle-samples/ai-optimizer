@@ -170,3 +170,10 @@ class TestEndpoints:
         )
         assert response.status_code == 404
         assert response.json() == {"detail": "Client: nonexistent_client not found."}
+
+    @pytest.mark.parametrize("app_server", ["/tmp/settings.json"], indirect=True)
+    def test_user_supplied_settings(self, app_server):
+        """Test the copy_user_settings function with a successful API call"""
+        assert app_server is not None
+
+        # Test Logic

@@ -27,7 +27,7 @@ TEST_CONFIG = {
 }
 
 # Environments for Client/Server
-os.environ["OCI_CLI_CONFIG_FILE"] = "/non/existant/path" # Prevent picking up default OCI config file
+os.environ["OCI_CLI_CONFIG_FILE"] = "/non/existant/path"  # Prevent picking up default OCI config file
 os.environ["API_SERVER_KEY"] = TEST_CONFIG["auth_token"]
 os.environ["API_SERVER_URL"] = "http://localhost"
 os.environ["API_SERVER_PORT"] = "8015"
@@ -93,14 +93,21 @@ def mock_embedding_model():
 # Fixures for tests/client
 #################################################
 @pytest.fixture(scope="session")
-def app_server():
+def app_server(request):
     """Start the FastAPI server for Streamlit and wait for it to be ready"""
 
     def is_port_in_use(port):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             return s.connect_ex(("localhost", port)) == 0
 
-    server_process = subprocess.Popen(["python", "launch_server.py"], cwd="src")
+    config_file = getattr(request, "param", None)
+
+    # If config_file is passed, include it in the subprocess command
+    cmd = ["python", "launch_server.py"]
+    if config_file:
+        cmd.extend(["-c", config_file])
+
+    server_process = subprocess.Popen(cmd, cwd="src")
 
     # Wait for server to be ready (up to 30 seconds)
     max_wait = 30

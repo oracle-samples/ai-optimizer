@@ -3,9 +3,9 @@ Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
 
+import os
 from common.schema import Settings
 import common.logging_config as logging_config
-import os
 
 logger = logging_config.logging.getLogger("server.bootstrap.settings_def")
 
@@ -31,7 +31,7 @@ def create_settings_from_json(client: str, json: str) -> Settings:
     try:
         tmp_settings = Settings.model_validate_json(json)
         tmp_settings.client = client
-        logger.debug(f"Settings from JSON: {tmp_settings}")
+        logger.debug("Settings from JSON: %s", tmp_settings)
         return tmp_settings
     except ValueError:
         return Settings(client=client)
@@ -46,7 +46,7 @@ def restore_or_default_settings(client: str, settings_file: str = SETTINGS_PATH)
     settings_file -- Path to the settings file with default value, but can be injected for testing
     """
     user_settings_json = ""
-    logger.debug(f"Settings file '{settings_file}'.")
+    logger.debug("Settings file: %s", settings_file)
     if os.path.isfile(settings_file) and os.access(settings_file, os.R_OK):
         with open(settings_file, "r", encoding="UTF-8") as file:
             user_settings_json = file.read()
