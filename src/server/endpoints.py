@@ -7,6 +7,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 # pylint: disable=global-statement
 
 import asyncio
+from io import FileIO
 import json
 import pickle
 from datetime import datetime
@@ -16,7 +17,7 @@ import shutil
 from typing import AsyncGenerator, Literal, Optional, get_args
 import time
 import requests
-from pydantic import HttpUrl
+from pydantic import HttpUrl, ValidationError
 
 from langgraph.graph.state import CompiledStateGraph
 from langchain_core.messages import HumanMessage, AnyMessage, convert_to_openai_messages, ChatMessage
@@ -29,6 +30,7 @@ from fastapi import FastAPI, Header, Query, HTTPException, UploadFile, Response
 from fastapi.responses import StreamingResponse, JSONResponse
 
 import server.bootstrap as bootstrap
+from server.bootstrap.settings_def import SETTINGS_PATH
 import server.utils.databases as databases
 import server.utils.oci as server_oci
 import server.utils.models as models
@@ -624,6 +626,39 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
         SETTINGS_OBJECTS.append(client_settings)
 
         return client_settings
+
+    #################################################
+    # Full configuration file Endpoints
+    #################################################
+    @auth.post("/v1/config", description="Create new full configuration file")
+    async def create_full_configuration_file() -> JSONResponse:
+        """Create new full configuration file"""
+        config = _produce_config()
+        try:
+            with open(SETTINGS_PATH, "w", encoding="UTF-8") as f:
+                f.write(config.model_dump_json(indent=2))
+        except FileIO:
+            raise HTTPException(status_code=500, detail="Unable to write configuration file")
+        return JSONResponse(status_code=200, content={"message": "Full Configuration file saved."})
+
+
+    def _produce_config() -> schema.Config:
+        """Assemble the full server configuration from other memory structures"""
+        settings = next((settings for settings in SETTINGS_OBJECTS if settings.client == "server"), None)
+        try :
+            # Extract DatabaseAuth from Databases, that is what we want to preserve
+            dbs = [schema.DatabaseAuth.model_validate_json(db.model_dump_json()) for db in  DATABASE_OBJECTS]
+        except ValidationError as e:
+            logger.error(f"Failed to generate full server configuration: {e}")
+            return None
+        return schema.Config(
+            user_settings=settings,
+            database_config=dbs,
+            oci_config=OCI_OBJECTS,
+            prompts_config=PROMPT_OBJECTS,
+            ll_model_config=MODEL_OBJECTS
+        )
+
 
     #################################################
     # chat Endpoints

@@ -4,7 +4,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 # spell-checker:ignore ollama, hnsw, mult, ocid, testset
 
-from typing import Optional, Literal, Union, get_args
+from typing import Optional, List, Literal, Union, get_args
 from pydantic import BaseModel, Field, PrivateAttr, model_validator
 
 from langchain_core.messages import ChatMessage
@@ -245,6 +245,18 @@ class Settings(BaseModel):
     )
     rag: Optional[RagSettings] = Field(default_factory=RagSettings, description="RAG Settings")
     oci: Optional[OciSettings] = Field(default_factory=OciSettings, description="OCI Settings")
+
+
+#####################################################
+# Server Configuration
+#####################################################
+class Config(BaseModel):
+    """Full Server Configuration"""
+    user_settings: Settings = Field(description="User Settings")
+    database_config: List[DatabaseAuth] = Field(default=[], description="Database Configurations")
+    oci_config: List[OracleCloudSettings] = Field(default=[], description="OCI Configurations")
+    prompts_config: List[Prompt] = Field(default=[], description="Prompts Configurations")
+    ll_model_config: List[Model] = Field(default=[], description="Model Configurations")
 
 
 #####################################################
