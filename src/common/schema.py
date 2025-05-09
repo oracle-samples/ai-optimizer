@@ -361,6 +361,13 @@ class EvaluationReport(Evaluation):
 
 
 #####################################################
+# Select AI
+#####################################################
+class SelectAIRequest(BaseModel):
+    profile: str
+    query: str
+
+#####################################################
 # Types
 #####################################################
 ClientIdType = Settings.__annotations__["client"]
