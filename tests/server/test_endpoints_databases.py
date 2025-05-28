@@ -153,6 +153,8 @@ class TestEndpoints:
                 "tcp_connect_timeout": 5,
                 "user": TEST_CONFIG["db_username"],
                 "vector_stores": [],
+                "selectai": False,
+                "selectai_objects": None,
                 "wallet_location": None,
                 "wallet_password": None,
             },

@@ -5,7 +5,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 # spell-checker: disable
 
 import pytest
-from common.schema import Settings, LargeLanguageSettings, PromptSettings, RagSettings, OciSettings
+from common.schema import Settings, LargeLanguageSettings, PromptSettings, VectorSearchSettings, SelectAISettings, OciSettings
 
 
 #############################################################################
@@ -52,7 +52,8 @@ class TestEndpoints:
         assert settings["client"] == "default"
         assert "ll_model" in settings
         assert "prompts" in settings
-        assert "rag" in settings
+        assert "vector_search" in settings
+        assert "selectai" in settings
         assert "oci" in settings
 
     def test_settings_get_nonexistent_client(self, client, auth_headers):
@@ -104,7 +105,8 @@ class TestEndpoints:
             client="default",
             ll_model=LargeLanguageSettings(model="updated-model", chat_history=False),
             prompts=PromptSettings(ctx="Updated Context", sys="Updated System"),
-            rag=RagSettings(rag_enabled=True, grading=False, search_type="Similarity", top_k=5),
+            vector_search=VectorSearchSettings(enabled=True, grading=False, search_type="Similarity", top_k=5),
+            selectai=SelectAISettings(enabled=True),
             oci=OciSettings(auth_profile="UPDATED"),
         )
 
@@ -126,9 +128,10 @@ class TestEndpoints:
         assert new_settings["ll_model"]["chat_history"] is False
         assert new_settings["prompts"]["ctx"] == "Updated Context"
         assert new_settings["prompts"]["sys"] == "Updated System"
-        assert new_settings["rag"]["rag_enabled"] is True
-        assert new_settings["rag"]["grading"] is False
-        assert new_settings["rag"]["top_k"] == 5
+        assert new_settings["vector_search"]["enabled"] is True
+        assert new_settings["vector_search"]["grading"] is False
+        assert new_settings["vector_search"]["top_k"] == 5
+        assert new_settings["selectai"]["enabled"] is True
         assert new_settings["oci"]["auth_profile"] == "UPDATED"
 
     def test_settings_copy(self, client, auth_headers):

@@ -42,7 +42,7 @@ class TestEndpoints:
 
     test_cases = [
         pytest.param("Basic Example", "sys", 200, id="basic_example_sys_prompt"),
-        pytest.param("RAG Example", "sys", 200, id="rag_example_sys_prompt"),
+        pytest.param("Vector Search Example", "sys", 200, id="vs_example_sys_prompt"),
         pytest.param("Custom", "sys", 200, id="basic_sys_prompt"),
         pytest.param("NONEXISTANT", "sys", 404, id="nonexistant_sys_prompt"),
         pytest.param("Basic Example", "ctx", 200, id="basic_example_ctx_prompt"),

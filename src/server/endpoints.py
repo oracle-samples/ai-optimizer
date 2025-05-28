@@ -3,8 +3,7 @@ Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
 # spell-checker:ignore langgraph, ocid, docos, giskard, testsets, testset, noauth
-# spell-checker:ignore astream, ainvoke, litellm
-# pylint: disable=global-statement
+# spell-checker:ignore astream, ainvoke, litellm, selectai, explainsql, showsql, vector_search
 
 import asyncio
 from io import FileIO
@@ -37,6 +36,7 @@ import server.utils.models as models
 import server.utils.embedding as embedding
 import server.utils.testbed as testbed
 import server.agents.chatbot as chatbot
+from server.agents.tools.selectai import selectai_tool
 
 import common.schema as schema
 import common.logging_config as logging_config
@@ -105,8 +105,10 @@ def get_client_db(client: schema.ClientIdType) -> schema.Database:
 
     # Get database name from client settings, defaulting to "DEFAULT"
     db_name = "DEFAULT"
-    if hasattr(client_settings, "rag") and client_settings.rag:
-        db_name = getattr(client_settings.rag, "database", "DEFAULT")
+    if (hasattr(client_settings, "vector_search") and client_settings.vector_search) or (
+        hasattr(client_settings, "selectai") and client_settings.selectai
+    ):
+        db_name = getattr(client_settings.vector_search, "database", "DEFAULT")
 
     # Find the database object
     db_obj = next((db for db in DATABASE_OBJECTS if db.name == db_name), None)
@@ -168,6 +170,7 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
         try:
             db_conn = databases.connect(db)
             db.vector_stores = embedding.get_vs(db_conn)
+            # SelectAI Enabled?
         except databases.DbException as ex:
             raise HTTPException(status_code=406, detail=f"Database: {name} {str(ex)}.") from ex
         return db
@@ -208,27 +211,18 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
     #################################################
     @auth.delete("/v1/embed/{vs}", description="Drop Vector Store")
     async def embed_drop_vs(
-        vs: schema.VectorStoreTableType, client: schema.ClientIdType = Header(default="server")
+        vs: schema.VectorStoreTableType, client: schema.ClientIdType = Header(...)
     ) -> JSONResponse:
         """Drop Vector Storage"""
         logger.debug("Received %s embed_drop_vs: %s", client, vs)
-        try:
-            embedding.drop_vs(get_client_db(client).connection, vs)
-        except Exception as ex:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Client: {client} database is missing connection details.",
-            ) from ex
-
+        embedding.drop_vs(get_client_db(client).connection, vs)
         return JSONResponse(status_code=200, content={"message": f"Vector Store: {vs} dropped."})
 
     @auth.post(
         "/v1/embed/web/store",
         description="Store Web Files for Embedding.",
     )
-    async def store_web_file(
-        request: list[HttpUrl], client: schema.ClientIdType = Header(default="server")
-    ) -> Response:
+    async def store_web_file(request: list[HttpUrl], client: schema.ClientIdType = Header(...)) -> Response:
         """Store contents from a web URL"""
         logger.debug("Received store_web_file - request: %s", request)
         temp_directory = get_temp_directory(client, "embedding")
@@ -259,9 +253,7 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
         "/v1/embed/local/store",
         description="Store Local Files for Embedding.",
     )
-    async def store_local_file(
-        files: list[UploadFile], client: schema.ClientIdType = Header(default="server")
-    ) -> Response:
+    async def store_local_file(files: list[UploadFile], client: schema.ClientIdType = Header(...)) -> Response:
         """Store contents from a local file uploaded to streamlit"""
         logger.debug("Received store_local_file - files: %s", files)
         temp_directory = get_temp_directory(client, "embedding")
@@ -279,9 +271,7 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
         description="Split and Embed Corpus.",
     )
     async def split_embed(
-        request: schema.DatabaseVectorStorage,
-        rate_limit: int = 0,
-        client: schema.ClientIdType = Header(default="server"),
+        request: schema.DatabaseVectorStorage, rate_limit: int = 0, client: schema.ClientIdType = Header(...)
     ) -> Response:
         """Perform Split and Embed"""
         logger.debug("Received split_embed - rate_limit: %i; request: %s", rate_limit, request)
@@ -311,7 +301,7 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
                 output_dir=None,
             )
             embed_client = await models.get_client(
-                MODEL_OBJECTS, {"model": request.model, "rag_enabled": True}, oci_config
+                MODEL_OBJECTS, {"model": request.model, "enabled": True}, oci_config
             )
 
             # Calculate and set the vector_store name using get_vs_table
@@ -525,7 +515,7 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
         bucket_name: str,
         auth_profile: schema.OCIProfileType,
         request: list[str],
-        client: schema.ClientIdType = Header(default="server"),
+        client: schema.ClientIdType = Header(...),
     ) -> JSONResponse:
         """Download files from Object Storage"""
         logger.debug(
@@ -668,11 +658,11 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
     ) -> AsyncGenerator[str, None]:
         """Generate a completion from agent, stream the results"""
         client_settings = get_client_settings(client)
+        model = request.model_dump()
         logger.debug("Settings: %s", client_settings)
-        logger.debug("Request: %s", request.model_dump())
+        logger.debug("Request: %s", model)
 
         # Establish LL schema.Model Params (if the request specs a model, otherwise override from settings)
-        model = request.model_dump()
         if not model["model"]:
             model = client_settings.ll_model.model_dump()
 
@@ -711,17 +701,26 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
             logger.error("A settings exception occurred: %s", ex)
             raise HTTPException(status_code=500, detail="Unexpected Error.") from ex
 
-        # Setup RAG
-        embed_client, ctx_prompt, db_conn = None, None, None
-        if client_settings.rag.rag_enabled:
-            embed_client = await models.get_client(MODEL_OBJECTS, client_settings.rag.model_dump(), oci_config)
+        db_conn = None
+        # Setup selectai
+        if client_settings.selectai.enabled:
+            db_conn = get_client_db(client).connection
+            databases.set_selectai_profile(db_conn, "temperature", model["temperature"])
+            databases.set_selectai_profile(db_conn, "max_tokens", model["max_completion_tokens"])
+
+        # Setup vector_search
+        embed_client, ctx_prompt = None, None
+        if client_settings.vector_search.enabled:
+            db_conn = get_client_db(client).connection
+            embed_client = await models.get_client(
+                MODEL_OBJECTS, client_settings.vector_search.model_dump(), oci_config
+            )
 
             user_ctx_prompt = getattr(client_settings.prompts, "ctx", "Basic Example")
             ctx_prompt = next(
                 (prompt for prompt in PROMPT_OBJECTS if prompt.category == "ctx" and prompt.name == user_ctx_prompt),
                 None,
             )
-            db_conn = get_client_db(client).connection
 
         kwargs = {
             "input": {"messages": [HumanMessage(content=request.messages[0].content)]},
@@ -735,7 +734,8 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
                 metadata={
                     "model_name": model["model"],
                     "use_history": client_settings.ll_model.chat_history,
-                    "rag_settings": client_settings.rag,
+                    "vector_search": client_settings.vector_search,
+                    "selectai": client_settings.selectai,
                     "sys_prompt": sys_prompt,
                     "ctx_prompt": ctx_prompt,
                 },
@@ -773,9 +773,7 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
         description="Submit a message for full completion.",
         response_model=schema.ChatResponse,
     )
-    async def chat_post(
-        request: schema.ChatRequest, client: schema.ClientIdType = Header(default="server")
-    ) -> schema.ChatResponse:
+    async def chat_post(request: schema.ChatRequest, client: schema.ClientIdType = Header(...)) -> schema.ChatResponse:
         """Full Completion Requests"""
         last_message = None
         async for chunk in completion_generator(client, request, "completions"):
@@ -788,9 +786,7 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
         response_class=StreamingResponse,
         include_in_schema=False,
     )
-    async def chat_stream(
-        request: schema.ChatRequest, client: schema.ClientIdType = Header(default="server")
-    ) -> StreamingResponse:
+    async def chat_stream(request: schema.ChatRequest, client: schema.ClientIdType = Header(...)) -> StreamingResponse:
         """Completion Requests"""
         return StreamingResponse(
             completion_generator(client, request, "streams"),
@@ -802,7 +798,7 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
         description="Get Chat History",
         response_model=list[schema.ChatMessage],
     )
-    async def chat_history(client: schema.ClientIdType = Header(default="server")) -> list[ChatMessage]:
+    async def chat_history(client: schema.ClientIdType = Header(...)) -> list[ChatMessage]:
         """Return Chat History"""
         agent: CompiledStateGraph = chatbot.chatbot_graph
         try:
@@ -823,14 +819,14 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
     # testbed Endpoints
     #################################################
     @auth.get("/v1/testbed/testsets", description="Get Stored TestSets.", response_model=list[schema.TestSets])
-    async def testbed_testsets(client: schema.ClientIdType = Header(default="server")) -> list[schema.TestSets]:
+    async def testbed_testsets(client: schema.ClientIdType = Header(...)) -> list[schema.TestSets]:
         """Get a list of stored TestSets, create TestSet objects if they don't exist"""
         testsets = testbed.get_testsets(db_conn=get_client_db(client).connection)
         return testsets
 
     @auth.get("/v1/testbed/evaluations", description="Get Stored Evaluations.", response_model=list[schema.Evaluation])
     async def testbed_evaluations(
-        tid: schema.TestSetsIdType, client: schema.ClientIdType = Header(default="server")
+        tid: schema.TestSetsIdType, client: schema.ClientIdType = Header(...)
     ) -> list[schema.Evaluation]:
         """Get Evaluations"""
         evaluations = testbed.get_evaluations(db_conn=get_client_db(client).connection, tid=tid.upper())
@@ -842,7 +838,7 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
         response_model=schema.EvaluationReport,
     )
     async def testbed_evaluation(
-        eid: schema.TestSetsIdType, client: schema.ClientIdType = Header(default="server")
+        eid: schema.TestSetsIdType, client: schema.ClientIdType = Header(...)
     ) -> schema.EvaluationReport:
         """Get Evaluations"""
         evaluation = testbed.process_report(db_conn=get_client_db(client).connection, eid=eid.upper())
@@ -850,14 +846,14 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
 
     @auth.get("/v1/testbed/testset_qa", description="Get Stored schema.TestSets Q&A.", response_model=schema.TestSetQA)
     async def testbed_testset_qa(
-        tid: schema.TestSetsIdType, client: schema.ClientIdType = Header(default="server")
+        tid: schema.TestSetsIdType, client: schema.ClientIdType = Header(...)
     ) -> schema.TestSetQA:
         """Get TestSet Q&A"""
         return testbed.get_testset_qa(db_conn=get_client_db(client).connection, tid=tid.upper())
 
     @auth.delete("/v1/testbed/testset_delete/{tid}", description="Delete a TestSet")
     async def testbed_delete_testset(
-        tid: Optional[schema.TestSetsIdType] = None, client: schema.ClientIdType = Header(default="server")
+        tid: Optional[schema.TestSetsIdType] = None, client: schema.ClientIdType = Header(...)
     ) -> JSONResponse:
         """Delete TestSet"""
         testbed.delete_qa(get_client_db(client).connection, tid.upper())
@@ -868,7 +864,7 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
         files: list[UploadFile],
         name: schema.TestSetsNameType,
         tid: Optional[schema.TestSetsIdType] = None,
-        client: schema.ClientIdType = Header(default="server"),
+        client: schema.ClientIdType = Header(...),
     ) -> schema.TestSetQA:
         """Update stored TestSet data"""
         created = datetime.now().isoformat()
@@ -893,7 +889,7 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
         ll_model: schema.ModelNameType = None,
         embed_model: schema.ModelNameType = None,
         questions: int = 2,
-        client: schema.ClientIdType = Header(default="server"),
+        client: schema.ClientIdType = Header(...),
     ) -> schema.TestSetQA:
         """Retrieve contents from a local file uploaded and generate Q&A"""
         # Setup Models
@@ -947,7 +943,7 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
         response_model=schema.EvaluationReport,
     )
     def testbed_evaluate_qa(
-        tid: schema.TestSetsIdType, judge: schema.ModelNameType, client: schema.ClientIdType = Header(default="server")
+        tid: schema.TestSetsIdType, judge: schema.ModelNameType, client: schema.ClientIdType = Header(...)
     ) -> schema.EvaluationReport:
         """Run evaluate against a testset"""
 
@@ -963,8 +959,8 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
         client_settings = get_client_settings(client)
         # Change Disable History
         client_settings.ll_model.chat_history = False
-        # Change Grade RAG
-        client_settings.rag.grading = False
+        # Change Grade vector_search
+        client_settings.vector_search.grading = False
 
         db_conn = get_client_db(client).connection
         testset = testbed.get_testset_qa(db_conn=db_conn, tid=tid.upper())
@@ -993,5 +989,84 @@ def register_endpoints(noauth: FastAPI, auth: FastAPI) -> None:
         shutil.rmtree(temp_directory)
 
         return testbed.process_report(db_conn=db_conn, eid=eid)
+
+    #################################################
+    # selectai Endpoints
+    #################################################
+    @auth.get(
+        "/v1/selectai/objects",
+        description="Get SelectAI Profile Object List",
+        response_model=list[schema.DatabaseSelectAIObjects],
+    )
+    async def selectai_get_objects(
+        client: schema.ClientIdType = Header(default="server"),
+    ) -> list[schema.DatabaseSelectAIObjects]:
+        """Update DatabaseSelectAIObjects"""
+        db_conn = get_client_db(client).connection
+        select_ai_objects = databases.get_selectai_objects(db_conn)
+        return select_ai_objects
+
+    @auth.get(
+        "/v1/selectai/enabled",
+        description="SelectAI enabled?",
+        response_model=dict,
+    )
+    async def selectai_enabled(
+        client: schema.ClientIdType = Header(default="server"),
+    ):
+        """Check if SelectAI is enabled for the client."""
+        client_settings = get_client_settings(client)
+        db_conn = get_client_db(client).connection
+        if db_conn is None:
+            raise HTTPException(status_code=500, detail="Database connection failed")
+        enabled = databases.selectai_enabled(db_conn)
+        client_settings.selectai.enabled = enabled
+        logger.debug(f"SelectAI enabled: {enabled}")
+        return {"enabled": enabled}
+    
+    @auth.patch(
+        "/v1/selectai/objects",
+        description="Update SelectAI Profile Object List",
+        response_model=list[schema.DatabaseSelectAIObjects],
+    )
+    async def selectai_update_objects(
+        payload: list[schema.DatabaseSelectAIObjects],
+        client: schema.ClientIdType = Header(default="server"),
+    ) -> list[schema.DatabaseSelectAIObjects]:
+        """Update DatabaseSelectAIObjects"""
+        logger.debug("Received selectai_update - payload: %s", payload)
+        object_list = json.dumps([obj.model_dump(include={"owner", "name"}) for obj in payload])
+        db_conn = get_client_db(client).connection
+        databases.set_selectai_profile(db_conn, "object_list", object_list)
+        return databases.get_selectai_objects(db_conn)
+
+    @auth.post("/v1/selectai", description="Call SelectAI Tool", response_model=str)
+    async def selectai_endpoint(
+        query: str,
+        client: schema.ClientIdType = Header(default="server"),
+    ) -> str:
+        """Call selectai_tool with provided profile and query parameters."""
+        logger.debug("Received selectai_endpoint - query: %s", query)
+        client_settings = get_client_settings(client)
+        logger.debug("SelectAI Enabled: %s", client_settings.selectai.selectai_enabled)
+        if not client_settings.selectai.selectai_enabled:
+            return f"SelectAI is Disabled for client: {client}"
+
+        try:
+            # Create RunnableConfig with profile and query
+            config = RunnableConfig(
+                profile="OPTIMIZER_PROFILE",
+                query=query,
+                action=client_settings.selectai.action,
+                configurable={"db_conn": get_client_db(client).connection},
+            )
+
+            # Call the tool
+            result = selectai_tool(config=config)
+
+            return result
+        except Exception as ex:
+            logger.error("An exception occurred: %s", ex)
+            raise HTTPException(status_code=500, detail=str(ex)) from ex
 
     logger.info("Endpoints Loaded.")
