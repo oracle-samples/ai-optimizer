@@ -6,7 +6,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 import pytest
 import unittest.mock as mock
-from common.schema import Settings, LargeLanguageSettings, PromptSettings, RagSettings, OciSettings
+from common.schema import Settings, LargeLanguageSettings, PromptSettings, VectorSearchSettings, OciSettings
 from server.bootstrap.settings_def import SETTINGS_PATH
 
 @pytest.fixture
@@ -29,16 +29,19 @@ def valid_server_config() -> str:
       "ctx": "Basic Example",
       "sys": "Basic Example"
     },
-    "rag": {
+    "oci": {
+      "auth_profile": "DEFAULT"
+    },
+    "vector_search": {
       "database": "DEFAULT",
       "vector_store": null,
       "alias": null,
       "model": null,
-      "chunk_size": null,
-      "chunk_overlap": null,
+      "chunk_size": 0,
+      "chunk_overlap": 0,
       "distance_metric": null,
       "index_type": null,
-      "rag_enabled": false,
+      "enabled": false,
       "grading": true,
       "search_type": "Similarity",
       "top_k": 4,
@@ -46,8 +49,10 @@ def valid_server_config() -> str:
       "fetch_k": 20,
       "lambda_mult": 0.5
     },
-    "oci": {
-      "auth_profile": "DEFAULT"
+    "selectai": {
+      "enabled": false,
+      "profile": "OPTIMIZER_PROFILE",
+      "action": "narrate"
     }
   },
   "database_config": [
@@ -87,7 +92,7 @@ def valid_server_config() -> str:
     },
     {
       "prompt": "You are an assistant for question-answering tasks, be concise.  Use the retrieved DOCUMENTS to answer the user input as accurately as possible. Keep your answer grounded in the facts of the DOCUMENTS and reference the DOCUMENTS where possible. If there ARE DOCUMENTS, you should be able to answer.  If there are NO DOCUMENTS, respond only with \'I am sorry, but cannot find relevant sources.\'",
-      "name": "RAG Example",
+      "name": "Vector Search Example",
       "category": "sys"
     },
     {
