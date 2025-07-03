@@ -17,7 +17,6 @@ RUN microdnf --nodocs -y update && \
     python3.11 -m venv --symlinks --upgrade-deps /opt/.venv && \
     groupadd $RUNUSER && \
     useradd -u 10001 -g $RUNUSER -md /app $RUNUSER && \
-    install -d -m 0700 -o $RUNUSER -g $RUNUSER /app/.oci && \
     install -d -m 0700 -o $RUNUSER -g $RUNUSER /app/tmp && \
     install -d -m 0700 -o $RUNUSER -g $RUNUSER /opt/package/server && \
     install -d -m 0700 -o $RUNUSER -g $RUNUSER /opt/package/client && \
@@ -26,9 +25,9 @@ RUN microdnf --nodocs -y update && \
 # Copy only pyproject.toml for dependency installation
 COPY pyproject.toml /opt/package/pyproject.toml
 # Use the virtual environment for pip installations
-RUN source /opt/.venv/bin/activate && \
-    pip install --upgrade pip wheel setuptools && \
-    pip install --no-cache-dir "/opt/package[all]"
+RUN /opt/.venv/bin/pip install --upgrade pip wheel setuptools && \
+    /opt/.venv/bin/pip install torch==2.7.1+cpu -f https://download.pytorch.org/whl/cpu/torch && \
+    /opt/.venv/bin/pip install --no-cache-dir "/opt/package[all]"
 
 ##################################################
 # Application
@@ -37,15 +36,12 @@ FROM all_in_one_pyenv AS oai_application
 ENV PATH=/opt/.venv/bin:$PATH
 ENV TEMP=/app/tmp
 
-COPY --chown=$RUNUSER:$RUNUSER . /app/
-# Remove the OCI file if not development; update the key path if so
-ENV ENVIRONMENT=${ENVIRONMENT}
-RUN if [ -d "/app/.oci" ] && [ "$ENVIRONMENT" != "development" ]; then \
-        rm -rf /app/.oci; \
-    else \
-        sed -i 's|/.*/\(.*\.pem\)|/app/.oci/\1|g' /app/.oci/config; \
-    fi
+# Expect the .oci directory to be mounted to /app/.oci
+VOLUME ["/app/.oci"]
+# Expect the TNS_ADMIN directory to be mounted to /app/tns_admin
+VOLUME ["/app/tns_admin"]
 
+COPY --chown=$RUNUSER:$RUNUSER . /app/
 # Set user and working directory
 USER $RUNUSER
 WORKDIR /app/
