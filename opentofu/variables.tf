@@ -49,22 +49,7 @@ variable "private_key_path" {
   default     = ""
 }
 
-variable "source_repository" {
-  description = "Code that will pulled onto compute; ensure correct branch/tag."
-  default     = "https://github.com/oracle-samples/ai-optimizer/archive/refs/heads/main"
-}
-
 // Infrastructure Type/Label
-variable "infrastructure" {
-  description = "Choose between a full Kubernetes or a light-weight Virtual Machine deployment."
-  type        = string
-  default     = ""
-  validation {
-    condition     = contains(["Kubernetes", "VM"], var.infrastructure)
-    error_message = "Must be either Kubernetes or VM."
-  }
-}
-
 variable "label_prefix" {
   description = "Alpha Numeric (less than 12 characters) string that will be prepended to all resources. Leave blank to auto-generate."
   type        = string
@@ -72,6 +57,16 @@ variable "label_prefix" {
   validation {
     condition     = can(regex("^[a-zA-Z0-9]*$", var.label_prefix)) || length(var.label_prefix) < 12
     error_message = "Must be Alpha Numeric and less than 12 characters."
+  }
+}
+
+variable "infrastructure" {
+  description = "Choose between a full Kubernetes or a light-weight Virtual Machine deployment."
+  type        = string
+  default     = ""
+  validation {
+    condition     = contains(["Kubernetes", "VM"], var.infrastructure)
+    error_message = "Must be either Kubernetes or VM."
   }
 }
 
@@ -179,6 +174,12 @@ variable "compute_gpu_shape" {
     condition     = contains(["VM.GPU.A10.1", "VM.GPU.A10.2"], var.compute_gpu_shape)
     error_message = "Must be either VM.GPU.A10.1, or VM.GPU.A10.2."
   }
+}
+
+// VM
+variable "vm_is_gpu_shape" {
+  type    = bool
+  default = false
 }
 
 // Kubernetes

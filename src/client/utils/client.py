@@ -3,7 +3,8 @@ Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
 
-from typing import AsyncIterator
+from typing import AsyncIterator, Optional
+import time
 import httpx
 
 from langchain_core.messages import ChatMessage
@@ -40,15 +41,23 @@ class Client:
             "timeout": timeout,
         }
 
-        def settings_request(method):
-            """Send Settings to Server"""
-            with httpx.Client() as client:
-                return client.request(
-                    method=method,
-                    url=f"{self.server_url}/v1/settings",
-                    json=self.settings,
-                    **self.request_defaults,
-                )
+        def settings_request(method, max_retries=3, backoff_factor=0.5):
+            """Send Settings to Server with retry on failure"""
+            for attempt in range(1, max_retries + 1):
+                try:
+                    with httpx.Client() as client:
+                        return client.request(
+                            method=method,
+                            url=f"{self.server_url}/v1/settings",
+                            json=self.settings,
+                            **self.request_defaults,
+                        )
+                except httpx.HTTPError as ex:
+                    logger.error("Failed settings request %i: %s", attempt, ex)
+                    if attempt == max_retries:
+                        raise  # Raise after final failure
+                    sleep_time = backoff_factor * (2 ** (attempt - 1))  # Exponential backoff
+                    time.sleep(sleep_time)
 
         response = settings_request("PATCH")
         if response.status_code != 200:
@@ -59,13 +68,21 @@ class Client:
                 logger.error("Error updating settings with POST: %i - %s", response.status_code, response.text)
         logger.info("Established Client")
 
-    async def stream(self, message: str) -> AsyncIterator[str]:
+    async def stream(self, message: str, image_b64: Optional[str] = None) -> AsyncIterator[str]:
         """Call stream endpoint for completion"""
         # This is called by ChatBot, so enable streaming
         self.settings["ll_model"]["streaming"] = True
+        if image_b64:
+            content = [
+                {"type": "text", "text": message},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_b64}"}},
+            ]
+        else:
+            content = message
+
         request = ChatRequest(
             **self.settings["ll_model"],
-            messages=[ChatMessage(role="human", content=message)],
+            messages=[ChatMessage(role="human", content=content)],
         )
         logger.debug("Sending Request: %s", request.model_dump_json())
         client_call = {"json": request.model_dump(), **self.request_defaults}

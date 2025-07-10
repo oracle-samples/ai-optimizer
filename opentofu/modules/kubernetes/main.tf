@@ -9,36 +9,18 @@ resource "random_string" "api_key" {
 }
 
 // oci_artifacts_container_repository
-resource "oci_artifacts_container_repository" "server_repository" {
+resource "oci_artifacts_container_repository" "repository_server" {
   compartment_id = var.compartment_id
   display_name   = lower(format("%s/server", var.label_prefix))
   is_immutable   = false
   is_public      = false
 }
 
-resource "oci_artifacts_container_repository" "client_repository" {
+resource "oci_artifacts_container_repository" "repository_client" {
   compartment_id = var.compartment_id
   display_name   = lower(format("%s/client", var.label_prefix))
   is_immutable   = false
   is_public      = false
-}
-
-resource "local_sensitive_file" "kubeconfig" {
-  content         = data.oci_containerengine_cluster_kube_config.default_cluster_kube_config.content
-  filename        = "${path.root}/generated/kubeconfig"
-  file_permission = 0600
-}
-
-resource "local_sensitive_file" "helm_values" {
-  content         = local.helm_values
-  filename        = "${path.root}/generated/${var.label_prefix}-values.yaml"
-  file_permission = 0600
-}
-
-resource "local_sensitive_file" "k8s_manifest" {
-  content         = local.k8s_manifest
-  filename        = "${path.root}/generated/${var.label_prefix}-manifest.yaml"
-  file_permission = 0600
 }
 
 // Cluster
@@ -84,7 +66,6 @@ resource "oci_containerengine_cluster" "default_cluster" {
     }
     service_lb_subnet_ids = [var.public_subnet_id]
   }
-  defined_tags = { (var.identity_tag_key) = var.label_prefix }
   freeform_tags = {
     "clusterName" = local.k8s_cluster_name
   }
@@ -146,8 +127,6 @@ resource "oci_containerengine_node_pool" "default_node_pool_details" {
     }
     size    = var.k8s_cpu_node_pool_size
     nsg_ids = [oci_core_network_security_group.k8s_workers.id]
-    // Used for Instance Principles
-    defined_tags = { (var.identity_tag_key) = var.label_prefix }
   }
   node_eviction_node_pool_settings {
     eviction_grace_duration              = "PT5M"
@@ -164,8 +143,9 @@ resource "oci_containerengine_node_pool" "default_node_pool_details" {
     ocpus         = var.compute_cpu_ocpu
   }
   node_source_details {
-    image_id    = local.oke_worker_cpu_image
-    source_type = "IMAGE"
+    image_id                = local.oke_worker_cpu_image
+    source_type             = "IMAGE"
+    boot_volume_size_in_gbs = 100
   }
   node_metadata = {
     user_data = data.cloudinit_config.workers.rendered
@@ -176,6 +156,7 @@ resource "oci_containerengine_node_pool" "default_node_pool_details" {
 }
 
 resource "oci_containerengine_node_pool" "gpu_node_pool_details" {
+  count              = var.k8s_node_pool_gpu_deploy ? 1 : 0
   cluster_id         = oci_containerengine_cluster.default_cluster.id
   compartment_id     = var.compartment_id
   kubernetes_version = format("v%s", var.k8s_version)
@@ -198,8 +179,6 @@ resource "oci_containerengine_node_pool" "gpu_node_pool_details" {
     }
     size    = var.k8s_gpu_node_pool_size
     nsg_ids = [oci_core_network_security_group.k8s_workers.id]
-    // Used for Instance Principles
-    defined_tags = { (var.identity_tag_key) = var.label_prefix }
   }
   node_eviction_node_pool_settings {
     eviction_grace_duration              = "PT5M"

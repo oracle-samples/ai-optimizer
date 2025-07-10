@@ -10,11 +10,13 @@ Session States Set:
 import asyncio
 import inspect
 import json
+import base64
 
 import streamlit as st
 from streamlit import session_state as state
 
 import client.utils.st_common as st_common
+from client.utils.st_footer import render_chat_footer
 import client.utils.client as client
 from client.content.config.models import get_models
 import common.logging_config as logging_config
@@ -83,7 +85,7 @@ async def main() -> None:
     if "user_client" not in state:
         state.user_client = client.Client(
             server=state.server,
-            settings=state["user_settings"],
+            settings=state.user_settings,
             timeout=1200,
         )
     user_client: client.Client = state.user_client
@@ -91,7 +93,7 @@ async def main() -> None:
     history = await user_client.get_history()
     st.chat_message("ai").write("Hello, how can I help you?")
     vector_search_refs = []
-    for message in history:
+    for message in history or []:
         if not message["content"]:
             continue
         if message["role"] == "tool" and message["name"] == "oraclevs_tool":
@@ -103,15 +105,34 @@ async def main() -> None:
                     show_vector_search_refs(vector_search_refs)
                     vector_search_refs = []
         elif message["role"] in ("human", "user"):
-            st.chat_message("human").write(message["content"])
+            with st.chat_message("human"):
+                content = message["content"]
+                if isinstance(content, list):
+                    for part in content:
+                        if part["type"] == "text":
+                            st.write(part["text"])
+                        elif part["type"] == "image_url" and part["image_url"]["url"].startswith("data:image"):
+                            st.image(part["image_url"]["url"])
+                else:
+                    st.write(content)
 
-    sys_prompt = state["user_settings"]["prompts"]["sys"]
-    if human_request := st.chat_input(f"Ask your question here... (current prompt: {sys_prompt})"):
-        st.chat_message("human").write(human_request)
+    sys_prompt = state.user_settings["prompts"]["sys"]
+    render_chat_footer()
+    if human_request := st.chat_input(
+        f"Ask your question here... (current prompt: {sys_prompt})",
+        accept_file=True,
+        file_type=["jpg", "jpeg", "png"],
+    ):
+        st.chat_message("human").write(human_request.text)
+        file_b64 = None
+        if human_request["files"]:
+            file = human_request["files"][0]
+            file_bytes = file.read()
+            file_b64 = base64.b64encode(file_bytes).decode("utf-8")
         try:
             message_placeholder = st.chat_message("ai").empty()
             full_answer = ""
-            async for chunk in user_client.stream(message=human_request):
+            async for chunk in user_client.stream(message=human_request.text, image_b64=file_b64):
                 full_answer += chunk
                 message_placeholder.markdown(full_answer)
             # Stream until we hit the end then refresh to replace with history

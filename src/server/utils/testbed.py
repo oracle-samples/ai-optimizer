@@ -6,7 +6,6 @@ Licensed under the Universal Permissive License v 1.0 as shown at http://oss.ora
 
 import json
 import pickle
-import nest_asyncio
 import pandas as pd
 from bs4 import BeautifulSoup
 
@@ -249,16 +248,17 @@ def build_knowledge_base(text_nodes: str, questions: int, ll_model: Model, embed
 
     def configure_and_set_model(client_model):
         """Configure and set Model for TestSet Generation (uses litellm)"""
-        model_name, params = None, None
+        model_name, disable_structured_output, params = None, False, None
         if client_model.api in ("CompatOpenAI", "CompatOpenAIEmbeddings"):
             model_name, params = (
                 f"openai/{client_model.name}",
                 {"api_base": client_model.url, "api_key": client_model.api_key or "api_compat"},
             )
         elif client_model.api in ("ChatOllama", "OllamaEmbeddings"):
-            model_name, params = (
+            model_name, disable_structured_output, params = (
                 f"ollama/{client_model.name}",
-                {"disable_structured_output": True, "api_base": client_model.url},
+                True,
+                {"api_base": client_model.url},
             )
         elif client_model.api == "Perplexity":
             model_name, params = f"perplexity/{client_model.name}", {"api_key": client_model.api_key}
@@ -267,12 +267,11 @@ def build_knowledge_base(text_nodes: str, questions: int, ll_model: Model, embed
 
         if client_model.type == "ll":
             logger.debug("KnowledgeBase LL: %s (%s)", model_name, params)
-            set_llm_model(model_name, **params)
+            set_llm_model(model_name, disable_structured_output, **params)
         else:
             logger.debug("KnowledgeBase Embed: %s (%s)", model_name, params)
             set_embedding_model(model_name, **params)
 
-    nest_asyncio.apply()
     logger.info("KnowledgeBase creation starting...")
     logger.info("LL Model: %s; Embedding: %s", ll_model, embed_model)
     configure_and_set_model(ll_model)
@@ -323,24 +322,22 @@ def process_report(db_conn: Connection, eid: TestSetsIdType) -> EvaluationReport
     # Main
     binds = {"eid": eid}
     sql = """
-        SELECT eid, to_char(evaluated), correctness, settings, rag_report
+        SELECT eid, to_char(evaluated) as evaluated, correctness, settings, rag_report
           FROM oai_evaluations WHERE eid=:eid
          ORDER BY evaluated
         """
     results = databases.execute_sql(db_conn, sql, binds)
-    pickled_report = results[0][4].read()
-
-    report = pickle.loads(pickled_report)
+    report = pickle.loads(results[0]["RAG_REPORT"])
     full_report = report.to_pandas()
     html_report = report.to_html()
     by_topic = report.correctness_by_topic()
     failures = report.failures
 
     evaluation_results = {
-        "eid": results[0][0].hex(),
-        "evaluated": results[0][1],
-        "correctness": results[0][2],
-        "settings": results[0][3],
+        "eid": results[0]["EID"].hex(),
+        "evaluated": results[0]["EVALUATED"],
+        "correctness": results[0]["CORRECTNESS"],
+        "settings": results[0]["SETTINGS"],
         "report": full_report.to_dict(),
         "correct_by_topic": by_topic.to_dict(),
         "failures": failures.to_dict(),

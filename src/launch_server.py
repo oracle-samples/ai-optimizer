@@ -2,7 +2,7 @@
 Copyright (c) 2024, 2025, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 """
-# spell-checker:ignore fastapi, laddr, checkpointer, langgraph, litellm, noauth
+# spell-checker:ignore fastapi, laddr, checkpointer, langgraph, litellm, noauth, apiserver
 # pylint: disable=redefined-outer-name,wrong-import-position
 
 import os
@@ -15,6 +15,10 @@ from typing import Annotated
 
 # Set OS Environment (Don't move their position to reflect on imports)
 os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
+os.environ["LITELLM_DISABLE_SPEND_LOGS"] = "True"
+os.environ["LITELLM_DISABLE_SPEND_UPDATES"] = "True"
+os.environ["LITELLM_DISABLE_END_USER_COST_TRACKING"] = "True"
+os.environ["LITELLM_DROP_PARAMS"] = "True"
 os.environ["GSK_DISABLE_SENTRY"] = "true"
 os.environ["GSK_DISABLE_ANALYTICS"] = "true"
 os.environ["USER_AGENT"] = "ai-optimizer"
@@ -42,7 +46,7 @@ logger = logging_config.logging.getLogger("launch_server")
 ##########################################
 # Process Control
 ##########################################
-def start_server(port: int = 8000) -> int:
+def start_server(port: int = 8000, logfile: bool = False) -> int:
     """Start the uvicorn server for FastAPI"""
     logger.info("Starting Oracle AI Optimizer and Toolkit")
 
@@ -65,9 +69,11 @@ def start_server(port: int = 8000) -> int:
                 continue
         return None
 
-    def start_subprocess(port: int) -> subprocess.Popen:
+    def start_subprocess(port: int, logfile: bool) -> subprocess.Popen:
         """Start the uvicorn server as a subprocess."""
         logger.info("API server starting on port: %i", port)
+        log_file = open(f"apiserver_{port}.log", "a", encoding="utf-8") if logfile else None
+        stdout = stderr = log_file if logfile else subprocess.PIPE
         process = subprocess.Popen(
             [
                 "uvicorn",
@@ -78,8 +84,8 @@ def start_server(port: int = 8000) -> int:
                 "--port",
                 str(port),
             ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stdout=stdout,
+            stderr=stderr,
         )
         logger.info("API server started on Port: %i; PID: %i", port, process.pid)
         return process
@@ -92,7 +98,7 @@ def start_server(port: int = 8000) -> int:
 
     popen_queue = queue.Queue()
     thread = threading.Thread(
-        target=lambda: popen_queue.put(start_subprocess(port)),
+        target=lambda: popen_queue.put(start_subprocess(port, logfile)),
         daemon=True,
     )
     thread.start()
