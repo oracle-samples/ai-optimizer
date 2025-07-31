@@ -319,6 +319,11 @@ variables:
 # Output Groups
 ###########################################################################
 outputGroups:
+  - title: "Oracle AI Optimizer and Toolkit Version"
+    outputs:
+      - app_version
+    visible: true
+
   - title: "Access the AI Optimizer and Toolkit"
     outputs:
       - client_url
@@ -333,32 +338,12 @@ outputGroups:
         - infrastructure
         - "Kubernetes"
 
-  - title: "Container Image Repositories"
-    outputs:
-      - client_repository
-      - server_repository
-    visible:
-      eq:
-        - infrastructure
-        - "Kubernetes"
-
-  - title: "Kubernetes Manifest"
-    outputs:
-      - k8s_manifest
-    visible:
-      eq:
-        - infrastructure
-        - "Kubernetes"
-
-  - title: "Helm Values"
-    outputs:
-      - helm_values
-    visible:
-      eq:
-        - infrastructure
-        - "Kubernetes"
 ###########################################################################
 outputs:
+  app_version:
+    title: "Version"
+    type: string
+
   client_url:
     title: "Web GUI"
     type: link

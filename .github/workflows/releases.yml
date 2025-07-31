@@ -41,28 +41,32 @@ jobs:
 
       - name: Inject Static Version into _version.py and version.tf
         run: |
-          echo "__version__ = \"${{ steps.version.outputs.VERSION }}\"" > src/common/_version.py
+          echo "__version__ = \"$VERSION\"" > src/common/_version.py
           sed -i "s/app_version = \".*\"/app_version = \"$VERSION\"/" opentofu/version.tf
           echo "Injected version:"
           cat src/common/_version.py
           cat opentofu/version.tf
+        env:
+          VERSION: ${{ steps.version.outputs.VERSION }}
 
       - name: Build and Push Source
         run: |
           cd src
-          zip -r ${{ env.SRC }}.zip .
-          tar --exclude='${{ env.SRC }}.tar.gz' -czf "${{ env.SRC }}.tar.gz" .
-          gh release upload ${{github.event.release.tag_name}} ${{ env.SRC }}.zip --clobber
-          gh release upload ${{github.event.release.tag_name}} ${{ env.SRC }}.tar.gz --clobber
+          zip -r $RUNNER_TEMP/${{ env.SRC }}.zip .
+          tar -czf "$RUNNER_TEMP/${{ env.SRC }}.tar.gz" .
+          gh release upload ${{github.event.release.tag_name}} "$RUNNER_TEMP/${{ env.SRC }}.zip" --clobber
+          gh release upload ${{github.event.release.tag_name}} "$RUNNER_TEMP/${{ env.SRC }}.tar.gz" --clobber
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUNNER_TEMP: ${{ runner.temp }}
         shell: bash
 
       - name: Build and Push Infrastructure as Code
         run: |
           cd opentofu
-          zip -r ${{ env.IAC }}.zip . -x "**/terraform*" "**/.terraform*" "cfgmgt/*"
-          gh release upload ${{github.event.release.tag_name}} ${{ env.IAC }}.zip --clobber
+          zip -r $RUNNER_TEMP/${{ env.IAC }}.zip . -x "**/terraform*" "**/.terraform*" "cfgmgt/*"
+          gh release upload ${{github.event.release.tag_name}} "$RUNNER_TEMP/${{ env.IAC }}.zip" --clobber
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUNNER_TEMP: ${{ runner.temp }}
         shell: bash
