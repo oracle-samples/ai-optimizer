@@ -37,6 +37,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 # Logging
 import common.logging_config as logging_config
+from common._version import __version__
 
 # Configuration
 import server.bootstrap.configfile as configfile
@@ -148,9 +149,9 @@ def verify_key(
 
 def register_endpoints(noauth: APIRouter, auth: APIRouter):
     """Register API Endpoints - Imports to avoid bootstrapping before config file read
-       New endpoints need to be registered in server.api.v1.__init__.py
+    New endpoints need to be registered in server.api.v1.__init__.py
     """
-    import server.api.v1 as api_v1 # pylint: disable=import-outside-toplevel
+    import server.api.v1 as api_v1  # pylint: disable=import-outside-toplevel
 
     # No-Authentication (probes only)
     noauth.include_router(api_v1.probes.noauth, prefix="/v1", tags=["Probes"])
@@ -166,6 +167,7 @@ def register_endpoints(noauth: APIRouter, auth: APIRouter):
     auth.include_router(api_v1.settings.auth, prefix="/v1/settings", tags=["Tools - Settings"])
     auth.include_router(api_v1.testbed.auth, prefix="/v1/testbed", tags=["Tools - Testbed"])
 
+
 #############################################################################
 # APP FACTORY
 #############################################################################
@@ -178,6 +180,7 @@ def create_app(config: str = None) -> FastAPI:
 
     app = FastAPI(
         title="Oracle AI Optimizer and Toolkit",
+        version=__version__,
         docs_url="/v1/docs",
         openapi_url="/v1/openapi.json",
         license_info={
@@ -212,4 +215,4 @@ if __name__ == "__main__":
     logger.info("API Server Using port: %i", PORT)
 
     app = create_app(args.config)
-    uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="info")
+    uvicorn.run(app, host="0.0.0.0", port=PORT, log_config=logging_config.LOGGING_CONFIG)
