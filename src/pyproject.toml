@@ -26,7 +26,7 @@ dependencies = [
 server = [
     "bokeh==3.7.3",
     "cohere==5.15.0",
-    "evaluate==0.4.3",
+    "evaluate==0.4.5",
     "fastapi==0.116.1",
     "faiss-cpu==1.11.0",
     "giskard==2.17.0",
