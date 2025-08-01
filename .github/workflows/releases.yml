@@ -64,7 +64,7 @@ jobs:
       - name: Build and Push Infrastructure as Code
         run: |
           cd opentofu
-          zip -r $RUNNER_TEMP/${{ env.IAC }}.zip . -x "**/terraform*" "**/.terraform*" "cfgmgt/*"
+          zip -r $RUNNER_TEMP/${{ env.IAC }}.zip . -x "terraform*" ".terraform*" "*/terraform*" "*/.terraform*" "cfgmgt/stage/*.*"
           gh release upload ${{github.event.release.tag_name}} "$RUNNER_TEMP/${{ env.IAC }}.zip" --clobber
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
