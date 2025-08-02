@@ -29,6 +29,7 @@ resource "random_password" "adb_rest" {
 
 // Network
 module "network" {
+  count          = local.byo_vcn ? 0 : 1
   source         = "./modules/network"
   compartment_id = local.compartment_ocid
   label_prefix   = local.label_prefix
@@ -46,11 +47,9 @@ resource "oci_load_balancer_load_balancer" "lb" {
     maximum_bandwidth_in_mbps = var.lb_max_shape
   }
   subnet_ids = [
-    module.network.public_subnet_ocid
+    local.public_subnet_ocid
   ]
-  network_security_group_ids = [
-    oci_core_network_security_group.lb.id,
-  ]
+  network_security_group_ids = compact([local.lb_nsg_id])
 }
 
 // Autonomous Database
@@ -83,7 +82,7 @@ module "vm" {
   label_prefix          = local.label_prefix
   tenancy_id            = var.tenancy_ocid
   compartment_id        = local.compartment_ocid
-  vcn_id                = module.network.vcn_ocid
+  vcn_id                = local.vcn_ocid
   lb_id                 = oci_load_balancer_load_balancer.lb.id
   lb_client_port        = local.lb_client_port
   lb_server_port        = local.lb_server_port
@@ -98,7 +97,7 @@ module "vm" {
   compute_cpu_shape     = var.compute_cpu_shape
   compute_gpu_shape     = var.compute_gpu_shape
   availability_domains  = local.availability_domains
-  private_subnet_id     = module.network.private_subnet_ocid
+  private_subnet_id     = local.private_subnet_ocid
   providers = {
     oci.home_region = oci.home_region
   }
@@ -111,7 +110,7 @@ module "kubernetes" {
   label_prefix                   = local.label_prefix
   tenancy_id                     = var.tenancy_ocid
   compartment_id                 = local.compartment_ocid
-  vcn_id                         = module.network.vcn_ocid
+  vcn_id                         = local.vcn_ocid
   region                         = var.region
   lb                             = oci_load_balancer_load_balancer.lb
   adb_id                         = oci_database_autonomous_database.default_adb.id
@@ -129,9 +128,11 @@ module "kubernetes" {
   compute_gpu_shape              = var.compute_gpu_shape
   compute_cpu_shape              = var.compute_cpu_shape
   availability_domains           = local.availability_domains
-  public_subnet_id               = module.network.public_subnet_ocid
-  private_subnet_id              = module.network.private_subnet_ocid
-  lb_nsg_id                      = oci_core_network_security_group.lb.id
+  public_subnet_id               = local.public_subnet_ocid
+  private_subnet_id              = local.private_subnet_ocid
+  create_nsgs                    = var.advanced_create_nsgs
+  lb_nsg_id                      = local.lb_nsg_id
+
   providers = {
     oci.home_region = oci.home_region
   }

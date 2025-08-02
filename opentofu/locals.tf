@@ -13,7 +13,7 @@ locals {
   adb_name = format("%sDB", upper(local.label_prefix))
   adb_whitelist_cidrs = concat(
     var.adb_whitelist_cidrs != "" ? split(",", replace(var.adb_whitelist_cidrs, "/\\s+/", "")) : [],
-    [module.network.vcn_ocid]
+    [local.vcn_ocid]
   )
   adb_password = sensitive(format("%s%s", random_password.adb_char.result, random_password.adb_rest.result))
 }
@@ -43,4 +43,15 @@ locals {
   fastapi_server_port   = 8000
   lb_client_port        = 80
   lb_server_port        = 8000
+  // Advanced
+  byo_vcn                   = var.advanced_byo_vcn_ocid == "" ? false : true
+  vcn_ocid                  = local.byo_vcn ? var.advanced_byo_vcn_ocid : module.network[0].vcn_ocid
+  private_subnet_ocid       = local.byo_vcn ? var.advanced_byo_private_subnet_ocid : module.network[0].private_subnet_ocid
+  public_subnet_ocid        = local.byo_vcn ? var.advanced_byo_public_subnet_ocid : module.network[0].public_subnet_ocid
+  private_subnet_cidr_block = data.oci_core_subnet.private.cidr_block
+}
+
+// NSGs
+locals {
+  lb_nsg_id = var.advanced_create_nsgs ? oci_core_network_security_group.lb["default"].id : null
 }

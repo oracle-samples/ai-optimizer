@@ -94,6 +94,11 @@ variable "compute_cpu_ocpu" {
   type = number
 }
 
+variable "create_nsgs" {
+  type    = bool
+  default = true
+}
+
 variable "lb_nsg_id" {
   type = string
 }

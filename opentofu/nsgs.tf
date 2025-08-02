@@ -4,8 +4,9 @@
 
 // Load Balancer
 resource "oci_core_network_security_group" "lb" {
+  for_each       = var.advanced_create_nsgs ? { "default" = true } : {}
   compartment_id = local.compartment_ocid
-  vcn_id         = module.network.vcn_ocid
+  vcn_id         = local.vcn_ocid
   display_name   = format("%s-lb", local.label_prefix)
   lifecycle {
     ignore_changes = [defined_tags, freeform_tags]
@@ -13,8 +14,8 @@ resource "oci_core_network_security_group" "lb" {
 }
 
 resource "oci_core_network_security_group_security_rule" "client_lb_ingress" {
-  for_each                  = toset(split(",", replace(var.client_allowed_cidrs, "/\\s+/", "")))
-  network_security_group_id = oci_core_network_security_group.lb.id
+  for_each                  = var.advanced_create_nsgs ? toset(split(",", replace(var.client_allowed_cidrs, "/\\s+/", ""))) : toset([])
+  network_security_group_id = oci_core_network_security_group.lb["default"].id
   description               = "Loadbalancer Client Access - ${each.value}."
   direction                 = "INGRESS"
   protocol                  = "6"
@@ -29,8 +30,8 @@ resource "oci_core_network_security_group_security_rule" "client_lb_ingress" {
 }
 
 resource "oci_core_network_security_group_security_rule" "server_lb_ingress" {
-  for_each                  = toset(split(",", replace(var.server_allowed_cidrs, "/\\s+/", "")))
-  network_security_group_id = oci_core_network_security_group.lb.id
+  for_each                  = var.advanced_create_nsgs ? toset(split(",", replace(var.server_allowed_cidrs, "/\\s+/", ""))) : toset([])
+  network_security_group_id = oci_core_network_security_group.lb["default"].id
   description               = "Loadbalancer Server Access - ${each.value}."
   direction                 = "INGRESS"
   protocol                  = "6"
@@ -45,10 +46,11 @@ resource "oci_core_network_security_group_security_rule" "server_lb_ingress" {
 }
 
 resource "oci_core_network_security_group_security_rule" "lb_egress" {
-  network_security_group_id = oci_core_network_security_group.lb.id
+  for_each                  = var.advanced_create_nsgs ? { "default" = true } : {}
+  network_security_group_id = oci_core_network_security_group.lb["default"].id
   description               = "Loadbalancer VCN Access."
   direction                 = "EGRESS"
   protocol                  = "6"
-  destination               = module.network.private_subnet_cidr_block
+  destination               = local.private_subnet_cidr_block
   destination_type          = "CIDR_BLOCK"
 }

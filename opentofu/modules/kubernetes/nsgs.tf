@@ -10,9 +10,12 @@ locals {
       protocol = 6, port = 6443, source = allowed_cidr, source_type = "CIDR_BLOCK"
     }
   } : {}
+  k8s_api_endpoint_nsg_id = var.create_nsgs ? oci_core_network_security_group.k8s_api_endpoint["default"].id : null
+  k8s_workers_nsg_id      = var.create_nsgs ? oci_core_network_security_group.k8s_workers["default"].id : null
 }
 
 resource "oci_core_network_security_group" "k8s_api_endpoint" {
+  for_each       = var.create_nsgs ? { "default" = true } : {}
   compartment_id = var.compartment_id
   vcn_id         = var.vcn_id
   display_name   = format("%s-k8s-api-endpoint", var.label_prefix)
@@ -22,6 +25,7 @@ resource "oci_core_network_security_group" "k8s_api_endpoint" {
 }
 
 resource "oci_core_network_security_group" "k8s_workers" {
+  for_each       = var.create_nsgs ? { "default" = true } : {}
   compartment_id = var.compartment_id
   vcn_id         = var.vcn_id
   display_name   = format("%s-k8s-workers", var.label_prefix)
@@ -109,10 +113,10 @@ locals {
 #########################################################################
 locals {
   # Dynamic map of all NSG rules for enabled NSGs
-  all_rules = { for x, y in merge(
-    { for k, v in local.k8s_api_endpoint_custom_rules : k => merge(v, { "nsg_id" = oci_core_network_security_group.k8s_api_endpoint.id }) },
-    { for k, v in local.k8s_api_endpoint_default_rules : k => merge(v, { "nsg_id" = oci_core_network_security_group.k8s_api_endpoint.id }) },
-    { for k, v in local.k8s_workers_default_rules : k => merge(v, { "nsg_id" = oci_core_network_security_group.k8s_workers.id }) },
+  all_rules = var.create_nsgs ? { for x, y in merge(
+    { for k, v in local.k8s_api_endpoint_custom_rules : k => merge(v, { "nsg_id" = oci_core_network_security_group.k8s_api_endpoint["default"].id }) },
+    { for k, v in local.k8s_api_endpoint_default_rules : k => merge(v, { "nsg_id" = oci_core_network_security_group.k8s_api_endpoint["default"].id }) },
+    { for k, v in local.k8s_workers_default_rules : k => merge(v, { "nsg_id" = oci_core_network_security_group.k8s_workers["default"].id }) },
     ) : x => merge(y, {
       description               = x
       network_security_group_id = lookup(y, "nsg_id")
@@ -122,7 +126,7 @@ locals {
       source_type               = lookup(y, "source_type", null)
       destination               = lookup(y, "destination", null)
       destination_type          = lookup(y, "destination_type", null)
-  }) }
+  }) } : {}
 }
 
 resource "oci_core_network_security_group_security_rule" "k8s" {

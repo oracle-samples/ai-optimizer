@@ -38,7 +38,7 @@ resource "oci_containerengine_cluster" "default_cluster" {
   endpoint_config {
     // Avoid K8s destruction by limiting access via is_public_ip_enabled and nsg_ids.  Keep on public subnet.
     is_public_ip_enabled = var.k8s_api_is_public
-    nsg_ids              = [oci_core_network_security_group.k8s_api_endpoint.id]
+    nsg_ids              = compact([local.k8s_api_endpoint_nsg_id])
     subnet_id            = var.public_subnet_id
   }
 
@@ -126,7 +126,7 @@ resource "oci_containerengine_node_pool" "default_node_pool_details" {
       }
     }
     size    = var.k8s_cpu_node_pool_size
-    nsg_ids = [oci_core_network_security_group.k8s_workers.id]
+    nsg_ids = compact([local.k8s_workers_nsg_id])
   }
   node_eviction_node_pool_settings {
     eviction_grace_duration              = "PT5M"
@@ -178,7 +178,7 @@ resource "oci_containerengine_node_pool" "gpu_node_pool_details" {
       }
     }
     size    = var.k8s_gpu_node_pool_size
-    nsg_ids = [oci_core_network_security_group.k8s_workers.id]
+    nsg_ids = compact([local.k8s_workers_nsg_id])
   }
   node_eviction_node_pool_settings {
     eviction_grace_duration              = "PT5M"

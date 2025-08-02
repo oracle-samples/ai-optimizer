@@ -76,3 +76,8 @@ variable "lb_client_port" {
 variable "lb_server_port" {
   type = number
 }
+
+variable "create_nsgs" {
+  type    = bool
+  default = true
+}

@@ -85,7 +85,7 @@ resource "oci_core_instance" "instance" {
   create_vnic_details {
     subnet_id        = var.private_subnet_id
     assign_public_ip = false
-    nsg_ids          = [oci_core_network_security_group.compute.id]
+    nsg_ids          = compact([local.compute_nsg_id])
   }
   metadata = {
     user_data = data.cloudinit_config.workers.rendered

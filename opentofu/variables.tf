@@ -70,6 +70,7 @@ variable "infrastructure" {
   }
 }
 
+
 // Autonomous Database
 variable "adb_version" {
   description = "Autonomous Database Version"
@@ -186,7 +187,7 @@ variable "vm_is_gpu_shape" {
 variable "k8s_version" {
   description = "The version of Kubernetes to install into the cluster masters."
   type        = string
-  default     = "1.32.1"
+  default     = "1.33.1"
 }
 
 variable "k8s_api_is_public" {
@@ -260,4 +261,37 @@ variable "server_allowed_cidrs" {
     condition     = can(regex("$|((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])/(3[0-2]|[1-2]?[0-9])(,?)( ?)){1,}$", var.server_allowed_cidrs))
     error_message = "Must be a comma separated string of valid CIDRs."
   }
+}
+
+// Advanced Options (BYO, etc.)
+variable "advanced_options" {
+  // For ORM schema
+  description = "Display Advanced Options?"
+  type        = bool
+  default     = false
+}
+
+// Advanced - Networking
+variable "advanced_byo_vcn_ocid" {
+  description = "The OCID of the BYO VCN."
+  type        = string
+  default     = ""
+}
+
+variable "advanced_byo_private_subnet_ocid" {
+  description = "The OCID of the BYO Private Subnet resource"
+  type        = string
+  default     = ""
+}
+
+variable "advanced_byo_public_subnet_ocid" {
+  description = "The OCID of the BYO Public Subnet resource"
+  type        = string
+  default     = ""
+}
+
+variable "advanced_create_nsgs" {
+  description = "Create NSGs for resource security and communication"
+  type        = bool
+  default     = true
 }

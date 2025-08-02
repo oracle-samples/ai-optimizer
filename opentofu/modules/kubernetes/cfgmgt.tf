@@ -24,7 +24,7 @@ locals {
     lb_ocid           = var.lb.id
     lb_subnet_ocid    = var.public_subnet_id
     lb_ip_ocid        = var.lb.ip_address_details[0].ip_address
-    lb_nsgs           = var.lb_nsg_id
+    lb_nsgs           = var.lb_nsg_id != null ? var.lb_nsg_id : ""
     lb_min_shape      = var.lb.shape_details[0].minimum_bandwidth_in_mbps
     lb_max_shape      = var.lb.shape_details[0].maximum_bandwidth_in_mbps
     adb_name          = lower(var.adb_name)

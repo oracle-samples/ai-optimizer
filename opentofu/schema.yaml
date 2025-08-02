@@ -42,7 +42,23 @@ variableGroups:
       - compartment_ocid
       - label_prefix
       - infrastructure
+      - advanced_options
     visible: true
+
+  #########################################################################
+  # Network - (Advanced)
+  #########################################################################
+  - title: "Advanced Networking Options"
+    variables:
+      - advanced_byo_vcn
+      - advanced_byo_vcn_compartment
+      - advanced_byo_vcn_ocid
+      - advanced_byo_private_subnet_compartment
+      - advanced_byo_private_subnet_ocid
+      - advanced_byo_public_subnet_compartment
+      - advanced_byo_public_subnet_ocid
+      - advanced_create_nsgs
+    visible: advanced_options
 
   #########################################################################
   # Infrastructure - Kubernetes
@@ -127,6 +143,78 @@ variables:
       - "VM"
 
   #########################################################################
+  advanced_byo_vcn:
+    type: boolean
+    title: "Bring Your Own Virtual Cloud Network?"
+    required: true
+    default: false
+    visible: advanced_options
+
+  advanced_byo_vcn_compartment:
+    title: "Virtual Cloud Network Compartment"
+    description: "BYO VCN Compartment"
+    type: oci:identity:compartment:id
+    required: true
+    default: compartment_ocid
+    visible: advanced_byo_vcn
+
+  advanced_byo_vcn_ocid:
+    type: oci:core:vcn:id
+    title: "Virtual Cloud Network (VCN)"
+    description: "BYO VCN Resource"
+    dependsOn:
+      compartmentId: advanced_byo_vcn_compartment
+    required: true
+    visible: advanced_byo_vcn
+
+  advanced_byo_public_subnet_compartment:
+    title: "Public Subnet Compartment"
+    description: "BYO Public Subnet Compartment"
+    type: oci:identity:compartment:id
+    required: true
+    default: advanced_byo_vcn_compartment
+    visible: advanced_byo_vcn
+
+  advanced_byo_public_subnet_ocid:
+    type: oci:core:subnet:id
+    title: "Public Subnet"
+    description: "BYO Public Subnet"
+    dependsOn:
+      compartmentId: advanced_byo_public_subnet_compartment
+      vcnId: advanced_byo_vcn_ocid
+      hidePublicSubnet: false
+      hidePrivateSubnet: true
+    required: true
+    visible: advanced_byo_vcn
+
+  advanced_byo_private_subnet_compartment:
+    title: "Private Subnet Compartment"
+    description: "BYO Private Subnet Compartment"
+    type: oci:identity:compartment:id
+    required: true
+    default: advanced_byo_vcn_compartment
+    visible: advanced_byo_vcn
+
+  advanced_byo_private_subnet_ocid:
+    type: oci:core:subnet:id
+    title: "Private Subnet"
+    description: "BYO Private Subnet"
+    dependsOn:
+      compartmentId: advanced_byo_private_subnet_compartment
+      vcnId: advanced_byo_vcn_ocid
+      hidePublicSubnet: true
+      hidePrivateSubnet: false
+    required: true
+    visible: advanced_byo_vcn
+
+  advanced_create_nsgs:
+    type: boolean
+    title: "Create Network Security Groups?"
+    required: true
+    default: true
+    visible: advanced_options
+
+  #########################################################################
   k8s_api_is_public:
     type: boolean
     title: "Public API Endpoint?"
@@ -138,7 +226,10 @@ variables:
     required: true
     default: "0.0.0.0/0"
     pattern: "$|((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\\/(3[0-2]|[1-2]?[0-9])(,?)( ?)){1,}$"
-    visible: k8s_api_is_public
+    visible:
+      and:
+        - k8s_api_is_public
+        - advanced_create_nsgs
 
   k8s_cpu_node_pool_size:
     type: integer
@@ -250,6 +341,7 @@ variables:
     required: true
     default: "0.0.0.0/0"
     pattern: "((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\\/(3[0-2]|[1-2]?[0-9])(,?)( ?)){1,}$"
+    visible: advanced_create_nsgs
 
   server_allowed_cidrs:
     type: array
@@ -257,6 +349,7 @@ variables:
     required: true
     default: "0.0.0.0/0"
     pattern: "((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\\/(3[0-2]|[1-2]?[0-9])(,?)( ?)){1,}$"
+    visible: advanced_create_nsgs
 
   #########################################################################
   adb_license_model:

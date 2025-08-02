@@ -5,3 +5,8 @@
 data "oci_identity_availability_domains" "all" {
   compartment_id = var.tenancy_ocid
 }
+
+data "oci_core_subnet" "private" {
+  subnet_id  = local.private_subnet_ocid
+  depends_on = [module.network[0]]
+}
