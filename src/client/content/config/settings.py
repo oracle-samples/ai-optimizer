@@ -38,15 +38,32 @@ logger = logging_config.logging.getLogger("client.content.config.settings")
 #############################################################################
 def get_settings(include_sensitive: bool = False):
     """Get Server-Side Settings"""
-    settings = api_call.get(
-        endpoint="v1/settings",
-        params={
-            "client": state.client_settings["client"],
-            "full_config": True,
-            "incl_sensitive": include_sensitive,
-        },
-    )
-    return settings
+    try:
+        settings = api_call.get(
+            endpoint="v1/settings",
+            params={
+                "client": state.client_settings["client"],
+                "full_config": True,
+                "incl_sensitive": include_sensitive,
+            },
+        )
+        return settings
+    except api_call.ApiError as e:
+        if "not found" in str(e):
+            # If client settings not found, create them
+            logger.info("Client settings not found, creating new ones")
+            api_call.post(endpoint="v1/settings", params={"client": state.client_settings["client"]})
+            settings = api_call.get(
+                endpoint="v1/settings",
+                params={
+                    "client": state.client_settings["client"],
+                    "full_config": True,
+                    "incl_sensitive": include_sensitive,
+                },
+            )
+            return settings
+        else:
+            raise
 
 
 def save_settings(settings):
@@ -144,8 +161,8 @@ def spring_ai_conf_check(ll_model: dict, embed_model: dict) -> str:
     if not ll_model or not embed_model:
         return "hybrid"
 
-    ll_api = ll_model["api"]
-    embed_api = embed_model["api"]
+    ll_api = ll_model.get("api", "")
+    embed_api = embed_model.get("api", "")
 
     if "OpenAI" in ll_api and "OpenAI" in embed_api:
         return "openai"
