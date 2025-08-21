@@ -259,7 +259,7 @@ def langchain_mcp_zip(settings):
 
         data = save_settings(settings)
         settings_path = os.path.join(dst_dir, "optimizer_settings.json")
-        with open(settings_path, "w") as f:
+        with open(settings_path, "w", encoding="utf-8") as f:
             f.write(data)
 
         zip_buffer = io.BytesIO()

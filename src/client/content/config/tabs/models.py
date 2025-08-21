@@ -121,7 +121,7 @@ def edit_model(model_type: str, action: Literal["add", "edit"], model_id: str = 
             help=help_text.help_dict["model_url"],
             key="add_model_url",
             value=model.get("url", ""),
-            disabled=disable_for_oci
+            disabled=disable_for_oci,
         )
         model["api_key"] = st.text_input(
             "API Key:",

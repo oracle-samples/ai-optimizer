@@ -17,6 +17,12 @@ import common.help_text as help_text
 import common.logging_config as logging_config
 from common.schema import PromptPromptType, PromptNameType, SelectAISettings, ClientIdType
 
+# Import the MCP initialization function
+try:
+    from launch_server import initialize_mcp_engine_with_model
+except ImportError:
+    initialize_mcp_engine_with_model = None
+
 logger = logging_config.logging.getLogger("client.utils.st_common")
 
 
@@ -29,9 +35,11 @@ def clear_state_key(state_key: str) -> None:
     logger.debug("State cleared: %s", state_key)
 
 
-def state_configs_lookup(state_configs_name: str, key: str) -> dict[str, dict[str, Any]]:
+def state_configs_lookup(state_configs_name: str, key: str, section: str = None) -> dict[str, dict[str, Any]]:
     """Convert state.<state_configs_name> into a lookup based on key"""
     configs = getattr(state, state_configs_name)
+    if section:
+        configs = configs.get(section, [])
     return {config[key]: config for config in configs if key in config}
 
 
@@ -55,6 +63,8 @@ def enabled_models_lookup(model_type: str) -> dict[str, dict[str, Any]]:
 def bool_to_emoji(value):
     "Return an Emoji for Bools"
     return "✅" if value else "⚪"
+
+
 def local_file_payload(uploaded_files: Union[BytesIO, list[BytesIO]]) -> list:
     """Upload Single file from Streamlit to the Server"""
     # If it's a single file, convert it to a list for consistent processing
@@ -164,6 +174,8 @@ def ll_sidebar() -> None:
     selected_model = state.client_settings["ll_model"]["model"]
     ll_idx = list(ll_models_enabled.keys()).index(selected_model)
     if not state.client_settings["selectai"]["enabled"]:
+        # Store the previous model to detect changes
+        previous_model = selected_model
         selected_model = st.sidebar.selectbox(
             "Chat model:",
             options=list(ll_models_enabled.keys()),
@@ -172,6 +184,16 @@ def ll_sidebar() -> None:
             on_change=update_client_settings("ll_model"),
             disabled=state.client_settings["selectai"]["enabled"],
         )
+
+        # If the model has changed, reinitialize the MCP engine
+        if selected_model != previous_model and initialize_mcp_engine_with_model:
+            try:
+                # Instead of creating a new event loop, we'll set a flag to indicate
+                # that the MCP engine needs to be reinitialized
+                state.mcp_needs_reinit = selected_model
+                logger.info(f"MCP engine marked for reinitialization with model: {selected_model}")
+            except Exception as e:
+                logger.error(f"Failed to mark MCP engine for reinitialization with model {selected_model}: {e}")
 
     # Temperature
     temperature = ll_models_enabled[selected_model]["temperature"]
@@ -431,6 +453,7 @@ def vector_search_sidebar() -> None:
         database_lookup = state_configs_lookup("database_configs", "name")
 
         vs_df = pd.DataFrame(database_lookup[db_alias].get("vector_stores"))
+
         def vs_reset() -> None:
             """Reset Vector Store Selections"""
             for key in state.client_settings["vector_search"]:

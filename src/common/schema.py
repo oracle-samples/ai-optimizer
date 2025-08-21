@@ -50,7 +50,9 @@ class DatabaseVectorStorage(BaseModel):
     """Database Vector Storage Tables"""
 
     vector_store: Optional[str] = Field(
-        default=None, description="Vector Store Table Name (auto-generated, do not set)", readOnly=True
+        default=None,
+        description="Vector Store Table Name (auto-generated, do not set)",
+        json_schema_extra={"readOnly": True},
     )
     alias: Optional[str] = Field(default=None, description="Identifiable Alias")
     model: Optional[str] = Field(default=None, description="Embedding Model")
@@ -63,8 +65,8 @@ class DatabaseVectorStorage(BaseModel):
 class DatabaseSelectAIObjects(BaseModel):
     """Database SelectAI Objects"""
 
-    owner: Optional[str] = Field(default=None, description="Object Owner", readOnly=True)
-    name: Optional[str] = Field(default=None, description="Object Name", readOnly=True)
+    owner: Optional[str] = Field(default=None, description="Object Owner", json_schema_extra={"readOnly": True})
+    name: Optional[str] = Field(default=None, description="Object Name", json_schema_extra={"readOnly": True})
     enabled: bool = Field(default=False, description="SelectAI Enabled")
 
 
@@ -86,12 +88,14 @@ class Database(DatabaseAuth):
     """Database Object"""
 
     name: str = Field(default="DEFAULT", description="Name of Database (Alias)")
-    connected: bool = Field(default=False, description="Connection Established", readOnly=True)
+    connected: bool = Field(default=False, description="Connection Established", json_schema_extra={"readOnly": True})
     vector_stores: Optional[list[DatabaseVectorStorage]] = Field(
-        default=[], description="Vector Storage (read-only)", readOnly=True
+        default=[], description="Vector Storage (read-only)", json_schema_extra={"readOnly": True}
     )
     selectai: bool = Field(default=False, description="SelectAI Possible")
-    selectai_profiles: Optional[list] = Field(default=[], description="SelectAI Profiles (read-only)", readOnly=True)
+    selectai_profiles: Optional[list] = Field(
+        default=[], description="SelectAI Profiles (read-only)", json_schema_extra={"readOnly": True}
+    )
     # Do not expose the connection to the endpoint
     _connection: oracledb.Connection = PrivateAttr(default=None)
 
@@ -103,6 +107,40 @@ class Database(DatabaseAuth):
     def set_connection(self, connection: oracledb.Connection) -> None:
         """Connection String"""
         self._connection = connection
+
+
+#####################################################
+# MCP
+#####################################################
+class MCPModelConfig(BaseModel):
+    """MCP Model Configuration"""
+
+    model_id: str = Field(..., description="Model identifier")
+    service_type: Literal["ollama", "openai"] = Field(..., description="AI service type")
+    base_url: str = Field(default="http://localhost:11434", description="Base URL for API")
+    api_key: Optional[str] = Field(default=None, description="API key", json_schema_extra={"sensitive": True})
+    enabled: bool = Field(default=True, description="Model availability status")
+    streaming: bool = Field(default=False, description="Enable streaming responses")
+    temperature: float = Field(default=1.0, description="Model temperature")
+    max_tokens: int = Field(default=2048, description="Maximum tokens per response")
+
+
+class MCPToolConfig(BaseModel):
+    """MCP Tool Configuration"""
+
+    name: str = Field(..., description="Tool name")
+    description: str = Field(..., description="Tool description")
+    parameters: dict[str, Any] = Field(..., description="Tool parameters")
+    enabled: bool = Field(default=True, description="Tool availability status")
+
+
+class MCPSettings(BaseModel):
+    """MCP Global Settings"""
+
+    models: list[MCPModelConfig] = Field(default_factory=list, description="Available MCP models")
+    tools: list[MCPToolConfig] = Field(default_factory=list, description="Available MCP tools")
+    default_model: Optional[str] = Field(default=None, description="Default model identifier")
+    enabled: bool = Field(default=True, description="Enable or disable MCP functionality")
 
 
 #####################################################
@@ -166,6 +204,16 @@ class Model(ModelAccess, LanguageModelParameters, EmbeddingModelParameters):
             raise ValueError(f"Provider '{self.provider}' is not valid. Must be one of: {providers}")
         return self
 
+    def check_provider_matches_type(self):
+        """Validate valid API"""
+        providers = get_args(ModelProviders)
+        if not self.provider or self.provider == "unset":
+            return self
+
+        if self.provider not in providers:
+            raise ValueError(f"Provider '{self.provider}' is not valid. Must be one of: {providers}")
+        return self
+
 
 #####################################################
 # Oracle Cloud Infrastructure
@@ -180,7 +228,9 @@ class OracleCloudSettings(BaseModel):
     """Store Oracle Cloud Infrastructure Settings"""
 
     auth_profile: str = Field(default="DEFAULT", description="Config File Profile")
-    namespace: Optional[str] = Field(default=None, description="Object Store Namespace", readOnly=True)
+    namespace: Optional[str] = Field(
+        default=None, description="Object Store Namespace", json_schema_extra={"readOnly": True}
+    )
     user: Optional[str] = Field(
         default=None,
         description="Optional if using Auth Token",
@@ -321,6 +371,7 @@ class Configuration(BaseModel):
     model_configs: Optional[list[Model]] = None
     oci_configs: Optional[list[OracleCloudSettings]] = None
     prompt_configs: Optional[list[Prompt]] = None
+    mcp_configs: Optional[list[MCPModelConfig]] = Field(default=None, description="List of MCP configurations")
 
     def model_dump_public(self, incl_sensitive: bool = False, incl_readonly: bool = False) -> dict:
         """Remove marked fields for FastAPI Response"""
@@ -377,7 +428,7 @@ class ChatChoices(BaseModel):
     """A list of chat completion choices."""
 
     index: int = Field(description="The index of the choice in the list of choices.")
-    message: ChatMessage = Field(descriptions="A chat completion message generated by the model.")
+    message: ChatMessage = Field(description="A chat completion message generated by the model.")
     finish_reason: Literal["stop", "length", "content_filter", "tool_calls"] = Field(
         description=(
             "The reason the model stopped generating tokens. "
@@ -490,3 +541,6 @@ SelectAIProfileType = Database.__annotations__["selectai_profiles"]
 TestSetsIdType = TestSets.__annotations__["tid"]
 TestSetsNameType = TestSets.__annotations__["name"]
 TestSetDateType = TestSets.__annotations__["created"]
+MCPModelIdType = MCPModelConfig.__annotations__["model_id"]
+MCPServiceType = MCPModelConfig.__annotations__["service_type"]
+MCPToolNameType = MCPToolConfig.__annotations__["name"]
